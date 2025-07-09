@@ -218,10 +218,108 @@ newtype! {
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct GroupCore {
+    pub id: GroupId,
+    pub name: String,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct Group {
     pub id: GroupId,
     pub name: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub members: Vec<UserId>,
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct CreateGroupParams {
+    pub name: String,
+    pub members: Vec<UserId>,
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct UpdateGroupParams {
+    pub name: String,
+}
+
+pub trait GroupService<Context, E: Error>: Send + Sync {
+    fn get_group(&self, ctx: Context, id: GroupId)
+    -> impl Future<Output = Result<Group, E>> + Send;
+
+    fn list_groups(&self, ctx: Context) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send;
+
+    fn create_group(
+        &self,
+        ctx: Context,
+        params: CreateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send;
+
+    fn update_group(
+        &self,
+        ctx: Context,
+        id: GroupId,
+        params: UpdateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send;
+
+    fn update_group_members(
+        &self,
+        ctx: Context,
+        id: GroupId,
+        members: &[UserId],
+    ) -> impl Future<Output = Result<Group, E>> + Send;
+}
+
+pub trait ProvideGroupService: Send + Sync {
+    type Context<'a>
+    where
+        Self: 'a;
+    type Error: Error;
+    type GroupService<'a>: GroupService<Self::Context<'a>, Self::Error>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_>;
+    fn group_service(&self) -> &Self::GroupService<'_>;
+
+    fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_service().get_group(ctx, id)
+    }
+
+    fn list_groups(&self) -> impl Future<Output = Result<Vec<GroupCore>, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_service().list_groups(ctx)
+    }
+
+    fn create_group(
+        &self,
+        params: CreateGroupParams,
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_service().create_group(ctx, params)
+    }
+
+    fn update_group(
+        &self,
+        id: GroupId,
+        params: UpdateGroupParams,
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_service().update_group(ctx, id, params)
+    }
+
+    fn update_group_members(
+        &self,
+        id: GroupId,
+        members: &[UserId],
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_service().update_group_members(ctx, id, members)
+    }
 }
