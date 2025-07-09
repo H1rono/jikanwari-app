@@ -120,6 +120,10 @@ macro_rules! newtype {
 
 pub type Timestamp = chrono::DateTime<chrono::Utc>;
 
+pub trait Error: std::error::Error + Send + Sync + 'static {}
+
+impl<E> Error for E where E: std::error::Error + Send + Sync + 'static {}
+
 newtype! {
     #[must_use]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
