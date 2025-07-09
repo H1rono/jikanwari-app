@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["domain"]
+members = ["domain", "service"]
 default-members = ["./."]
 
 [workspace.package]
