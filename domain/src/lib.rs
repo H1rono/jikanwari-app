@@ -139,6 +139,77 @@ pub struct User {
     pub updated_at: Timestamp,
 }
 
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct CreateUserParams {
+    pub name: String,
+}
+
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct UpdateUserParams {
+    pub name: String,
+}
+
+pub trait UserService<Context, E: Error>: Send + Sync {
+    fn get_user(&self, ctx: Context, id: UserId) -> impl Future<Output = Result<User, E>> + Send;
+
+    fn list_users(&self, ctx: Context) -> impl Future<Output = Result<Vec<User>, E>> + Send;
+
+    fn create_user(
+        &self,
+        ctx: Context,
+        params: CreateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send;
+
+    fn update_user(
+        &self,
+        ctx: Context,
+        id: UserId,
+        params: UpdateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send;
+}
+
+pub trait ProvideUserService: Send + Sync {
+    type Context<'a>
+    where
+        Self: 'a;
+    type Error: Error;
+    type UserService<'a>: UserService<Self::Context<'a>, Self::Error>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_>;
+    fn user_service(&self) -> &Self::UserService<'_>;
+
+    fn get_user(&self, id: UserId) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_service().get_user(ctx, id)
+    }
+
+    fn list_users(&self) -> impl Future<Output = Result<Vec<User>, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_service().list_users(ctx)
+    }
+
+    fn create_user(
+        &self,
+        params: CreateUserParams,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_service().create_user(ctx, params)
+    }
+
+    fn update_user(
+        &self,
+        id: UserId,
+        params: UpdateUserParams,
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_service().update_user(ctx, id, params)
+    }
+}
+
 newtype! {
     #[must_use]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
