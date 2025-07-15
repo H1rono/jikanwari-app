@@ -140,13 +140,35 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         id: domain::GroupId,
         members: &[domain::UserId],
     ) -> Result<domain::Group, E> {
+        #[derive(sqlx::FromRow)]
+        struct Check {
+            group_count: i64,
+            member_count: i64,
+        }
+
         self.within_tx(async |conn| {
+            let members: Vec<_> = members.iter().map(|id| id.into_inner()).collect();
+            let check = sqlx::query_file_as!(
+                Check,
+                "queries/update_group_members.0.sql",
+                id.into_inner(),
+                &members
+            )
+            .fetch_one(&mut *conn)
+            .await
+            .context("Failed to check group members")?;
+            if check.group_count == 0 {
+                return Err(E::not_found("Group not found"));
+            }
+            if check.member_count != members.len() as i64 {
+                return Err(E::not_found("Some members not found"));
+            }
+
             sqlx::query_file!("queries/update_group_members.1.sql", id.into_inner())
                 .execute(&mut *conn)
                 .await
                 .context("Failed to delete existing group members")?;
 
-            let members: Vec<_> = members.iter().map(|id| id.into_inner()).collect();
             let _ = sqlx::query_file_as!(
                 GroupMemberRow,
                 "queries/update_group_members.2.sql",
@@ -158,10 +180,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             .context("Failed to insert new group members")?;
 
             let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
-                .fetch_optional(&mut *conn)
+                .fetch_one(&mut *conn)
                 .await
-                .context("Failed to fetch updated group")?
-                .ok_or_else(|| E::not_found("Group not found"))?;
+                .context("Failed to fetch updated group")?;
             Ok(group.into())
         })
         .await
