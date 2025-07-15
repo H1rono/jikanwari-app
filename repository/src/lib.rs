@@ -1,3 +1,4 @@
+mod group;
 mod user;
 
 #[derive(Debug, Clone)]

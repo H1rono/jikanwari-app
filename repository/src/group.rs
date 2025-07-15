@@ -1,0 +1,169 @@
+use anyhow::Context;
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, sqlx::FromRow,
+)]
+pub struct GroupRow {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub created_at: domain::Timestamp,
+    pub updated_at: domain::Timestamp,
+    pub members: Vec<uuid::Uuid>,
+}
+
+impl From<GroupRow> for domain::Group {
+    fn from(row: GroupRow) -> Self {
+        let GroupRow {
+            id,
+            name,
+            created_at,
+            updated_at,
+            members,
+        } = row;
+        let members = members.into_iter().map(domain::UserId::new).collect();
+        Self {
+            id: domain::GroupId::new(id),
+            name,
+            created_at,
+            updated_at,
+            members,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, sqlx::FromRow,
+)]
+pub struct GroupCoreRow {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub created_at: domain::Timestamp,
+    pub updated_at: domain::Timestamp,
+}
+
+impl From<GroupCoreRow> for domain::GroupCore {
+    fn from(row: GroupCoreRow) -> Self {
+        let GroupCoreRow {
+            id,
+            name,
+            created_at,
+            updated_at,
+        } = row;
+        Self {
+            id: domain::GroupId::new(id),
+            name,
+            created_at,
+            updated_at,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, sqlx::FromRow,
+)]
+pub struct GroupMemberRow {
+    pub group_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+}
+
+impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
+    async fn get_group(&self, id: domain::GroupId) -> Result<domain::Group, E> {
+        let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to fetch group")?;
+        Ok(group.into())
+    }
+
+    async fn list_groups(&self) -> Result<Vec<domain::GroupCore>, E> {
+        let groups = sqlx::query_file_as!(GroupCoreRow, "queries/list_groups.sql")
+            .fetch_all(&self.pool)
+            .await
+            .context("Failed to fetch groups")?;
+        Ok(groups.into_iter().map(Into::into).collect())
+    }
+
+    async fn create_group(&self, params: domain::CreateGroupParams) -> Result<domain::Group, E> {
+        let id = uuid::Uuid::now_v7();
+        let domain::CreateGroupParams { name, members } = params;
+        let members: Vec<_> = members.into_iter().map(|id| id.into_inner()).collect();
+        let group_core =
+            sqlx::query_file_as!(GroupCoreRow, "queries/create_group_core.sql", id, name)
+                .fetch_one(&self.pool)
+                .await
+                .context("Failed to create group core")?;
+        let group_members = sqlx::query_file_as!(
+            GroupMemberRow,
+            "queries/create_group_members.sql",
+            id,
+            &members
+        )
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to create group members")?;
+        let GroupCoreRow {
+            id,
+            name,
+            created_at,
+            updated_at,
+        } = group_core;
+        let members = group_members
+            .into_iter()
+            .map(|m| domain::UserId::new(m.user_id))
+            .collect();
+        Ok(domain::Group {
+            id: domain::GroupId::new(id),
+            name,
+            created_at,
+            updated_at,
+            members,
+        })
+    }
+
+    async fn update_group(
+        &self,
+        id: domain::GroupId,
+        params: domain::UpdateGroupParams,
+    ) -> Result<domain::Group, E> {
+        let domain::UpdateGroupParams { name } = params;
+        let group =
+            sqlx::query_file_as!(GroupRow, "queries/update_group.sql", id.into_inner(), name)
+                .fetch_one(&self.pool)
+                .await
+                .context("Failed to update group")?;
+        Ok(group.into())
+    }
+
+    async fn update_group_members(
+        &self,
+        id: domain::GroupId,
+        members: &[domain::UserId],
+    ) -> Result<domain::Group, E> {
+        self.within_tx(async |conn| {
+            sqlx::query_file!("queries/update_group_members.1.sql", id.into_inner())
+                .execute(&mut *conn)
+                .await
+                .context("Failed to delete existing group members")?;
+
+            let members: Vec<_> = members.iter().map(|id| id.into_inner()).collect();
+            let _ = sqlx::query_file_as!(
+                GroupMemberRow,
+                "queries/update_group_members.2.sql",
+                id.into_inner(),
+                &members
+            )
+            .fetch_all(&mut *conn)
+            .await
+            .context("Failed to insert new group members")?;
+
+            let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
+                .fetch_optional(&mut *conn)
+                .await
+                .context("Failed to fetch updated group")?
+                .ok_or_else(|| E::not_found("Group not found"))?;
+            Ok(group.into())
+        })
+        .await
+    }
+}
