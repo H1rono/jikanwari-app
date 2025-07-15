@@ -41,7 +41,9 @@ where
     pub fn into_router(self) -> axum::Router {
         use axum::routing::get;
 
-        let api = axum::Router::new().merge(self.group_router());
+        let api = axum::Router::new()
+            .merge(self.group_router())
+            .merge(self.user_router());
         axum::Router::new()
             .route("/ping", get(async || "pong"))
             .nest("/api", api)
