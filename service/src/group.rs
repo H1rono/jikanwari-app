@@ -67,33 +67,48 @@ where
     C: GroupRepository<E>,
     E: domain::Error,
 {
+    #[tracing::instrument(skip_all, fields(id = %id))]
     async fn get_group(&self, ctx: C, id: GroupId) -> Result<Group, E> {
-        ctx.get_group(id).await
+        ctx.get_group(id).await.inspect(|g| {
+            tracing::debug!(id = %g.id, "Retrieved group");
+        })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_groups(&self, ctx: C) -> Result<Vec<GroupCore>, E> {
-        ctx.list_groups().await
+        ctx.list_groups().await.inspect(|gs| {
+            tracing::debug!(count = gs.len(), "Listed groups");
+        })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn create_group(&self, ctx: C, params: CreateGroupParams) -> Result<Group, E> {
-        ctx.create_group(params).await
+        ctx.create_group(params).await.inspect(|g| {
+            tracing::debug!(id = %g.id, members = g.members.len(), "Created group");
+        })
     }
 
+    #[tracing::instrument(skip_all, fields(id = %id))]
     async fn update_group(
         &self,
         ctx: C,
         id: GroupId,
         params: UpdateGroupParams,
     ) -> Result<Group, E> {
-        ctx.update_group(id, params).await
+        ctx.update_group(id, params).await.inspect(|g| {
+            tracing::debug!(id = %g.id, "Updated group");
+        })
     }
 
+    #[tracing::instrument(skip_all, fields(id = %id))]
     async fn update_group_members(
         &self,
         ctx: C,
         id: GroupId,
         members: &[UserId],
     ) -> Result<Group, E> {
-        ctx.update_group_members(id, members).await
+        ctx.update_group_members(id, members).await.inspect(|g| {
+            tracing::debug!(id = %g.id, members = g.members.len(), "Updated group members");
+        })
     }
 }

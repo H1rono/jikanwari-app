@@ -33,6 +33,9 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         let user = sqlx::query_file_as!(UserRow, "queries/get_user.sql", id.into_inner())
             .fetch_optional(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while fetching user");
+            })
             .context("Failed to fetch user from database")?
             .ok_or_else(|| E::not_found("User not found"))?;
         Ok(user.into())
@@ -42,6 +45,9 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         let users = sqlx::query_file_as!(UserRow, "queries/list_users.sql")
             .fetch_all(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while listing users");
+            })
             .context("Failed to fetch users from database")?;
         Ok(users.into_iter().map(Into::into).collect())
     }
@@ -52,6 +58,9 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         let user = sqlx::query_file_as!(UserRow, "queries/create_user.sql", id, name)
             .fetch_one(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while creating user");
+            })
             .context("Failed to create user in database")?;
         Ok(user.into())
     }
@@ -65,6 +74,9 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         let user = sqlx::query_file_as!(UserRow, "queries/update_user.sql", id.into_inner(), name)
             .fetch_one(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while updating user");
+            })
             .context("Failed to update user in database")?;
         Ok(user.into())
     }

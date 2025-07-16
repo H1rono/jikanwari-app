@@ -72,6 +72,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
             .fetch_one(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while fetching group");
+            })
             .context("Failed to fetch group")?;
         Ok(group.into())
     }
@@ -80,11 +83,15 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         let groups = sqlx::query_file_as!(GroupCoreRow, "queries/list_groups.sql")
             .fetch_all(&self.pool)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while listing groups");
+            })
             .context("Failed to fetch groups")?;
         Ok(groups.into_iter().map(Into::into).collect())
     }
 
     async fn create_group(&self, params: domain::CreateGroupParams) -> Result<domain::Group, E> {
+        // TODO: transaction
         let id = uuid::Uuid::now_v7();
         let domain::CreateGroupParams { name, members } = params;
         let members: Vec<_> = members.into_iter().map(|id| id.into_inner()).collect();
@@ -92,6 +99,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             sqlx::query_file_as!(GroupCoreRow, "queries/create_group_core.sql", id, name)
                 .fetch_one(&self.pool)
                 .await
+                .inspect_err(|e| {
+                    tracing::error!(error = %e, "Postgres error while creating group core");
+                })
                 .context("Failed to create group core")?;
         let group_members = sqlx::query_file_as!(
             GroupMemberRow,
@@ -101,6 +111,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         )
         .fetch_all(&self.pool)
         .await
+        .inspect_err(|e| {
+            tracing::error!(error = %e, "Postgres error while creating group members");
+        })
         .context("Failed to create group members")?;
         let GroupCoreRow {
             id,
@@ -131,6 +144,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             sqlx::query_file_as!(GroupRow, "queries/update_group.sql", id.into_inner(), name)
                 .fetch_one(&self.pool)
                 .await
+                .inspect_err(|e| {
+                    tracing::error!(error = %e, "Postgres error while updating group");
+                })
                 .context("Failed to update group")?;
         Ok(group.into())
     }
@@ -156,6 +172,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             )
             .fetch_one(&mut *conn)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while checking group members");
+            })
             .context("Failed to check group members")?;
             if check.group_count == 0 {
                 return Err(E::not_found("Group not found"));
@@ -167,6 +186,12 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             sqlx::query_file!("queries/update_group_members.1.sql", id.into_inner())
                 .execute(&mut *conn)
                 .await
+                .inspect_err(|e| {
+                    tracing::error!(
+                        error = %e,
+                        "Postgres error while deleting existing group members",
+                    );
+                })
                 .context("Failed to delete existing group members")?;
 
             let _ = sqlx::query_file_as!(
@@ -177,11 +202,17 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             )
             .fetch_all(&mut *conn)
             .await
+            .inspect_err(|e| {
+                tracing::error!(error = %e, "Postgres error while inserting new group members");
+            })
             .context("Failed to insert new group members")?;
 
             let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
                 .fetch_one(&mut *conn)
                 .await
+                .inspect_err(|e| {
+                    tracing::error!(error = %e, "Postgres error while fetching updated group");
+                })
                 .context("Failed to fetch updated group")?;
             Ok(group.into())
         })

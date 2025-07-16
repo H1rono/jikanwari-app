@@ -49,19 +49,31 @@ where
     C: UserRepository<E>,
     E: domain::Error,
 {
+    #[tracing::instrument(skip_all, fields(id = %id))]
     async fn get_user(&self, ctx: C, id: UserId) -> Result<User, E> {
-        ctx.get_user(id).await
+        ctx.get_user(id).await.inspect(|u| {
+            tracing::debug!(id = %u.id, "Retrieved user");
+        })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn list_users(&self, ctx: C) -> Result<Vec<User>, E> {
-        ctx.list_users().await
+        ctx.list_users().await.inspect(|us| {
+            tracing::debug!(count = us.len(), "Listed users");
+        })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn create_user(&self, ctx: C, params: CreateUserParams) -> Result<User, E> {
-        ctx.create_user(params).await
+        ctx.create_user(params).await.inspect(|u| {
+            tracing::debug!(id = %u.id, "Created user");
+        })
     }
 
+    #[tracing::instrument(skip_all, fields(id = %id))]
     async fn update_user(&self, ctx: C, id: UserId, params: UpdateUserParams) -> Result<User, E> {
-        ctx.update_user(id, params).await
+        ctx.update_user(id, params).await.inspect(|u| {
+            tracing::debug!(id = %u.id, "Updated user");
+        })
     }
 }

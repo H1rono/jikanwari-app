@@ -5,6 +5,10 @@ mod state;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     use anyhow::Context;
+    use tracing_subscriber::EnvFilter;
+
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let pg_config = config::PgConfig::load_env("POSTGRES_")?;
     let state = state::State::load_pg(&pg_config).await?;
