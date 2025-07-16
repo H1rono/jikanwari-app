@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH g AS (\n    UPDATE ONLY \"groups\"\n    SET \"name\" = $2,\n        \"updated_at\" = NOW()\n    WHERE\n        \"id\" = $1\n    RETURNING \"id\", \"name\", \"created_at\", \"updated_at\"\n)\nSELECT\n    g.\"id\", g.\"name\", g.\"created_at\", g.\"updated_at\",\n    (SELECT array_agg(\"user_id\") FROM group_members WHERE \"group_id\" = g.id) AS \"members!\"\nFROM g\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "members!",
+        "type_info": "UuidArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "fd858fd1dc4374f9e4278472e92b648951f1c27114850968adb65107b3e5e291"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO \"group_members\" (\"group_id\", \"user_id\")\n(\n    SELECT $1 AS \"group_id\", \"user_id\"\n    FROM unnest($2::uuid[]) AS \"user_id\"\n)\nRETURNING \"group_id\", \"user_id\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "9ddc40356547e054413f08c380daf85046da7856fdc4ca8696272831992810c3"
+}

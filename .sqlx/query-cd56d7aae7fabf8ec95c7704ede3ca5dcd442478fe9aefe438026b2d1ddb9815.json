@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- check group and member existence\nWITH g AS (\n    SELECT \"id\" FROM \"groups\" WHERE \"id\" = $1\n),\nm AS (\n    SELECT $1::uuid AS \"group_id\", \"id\" AS \"user_id\"\n    FROM \"users\"\n    WHERE \"id\" = ANY ($2::uuid[])\n)\nSELECT COUNT(g.\"id\") AS \"group_count!\", COUNT(m.\"user_id\") AS \"member_count!\"\nFROM g JOIN m ON g.\"id\" = m.\"group_id\"\nGROUP BY g.\"id\"\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "member_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "cd56d7aae7fabf8ec95c7704ede3ca5dcd442478fe9aefe438026b2d1ddb9815"
+}
