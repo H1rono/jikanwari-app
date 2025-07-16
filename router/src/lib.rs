@@ -40,13 +40,37 @@ where
 
     pub fn into_router(self) -> axum::Router {
         use axum::routing::get;
+        use tower_http::{
+            ServiceBuilderExt,
+            request_id::MakeRequestUuid,
+            sensitive_headers::SetSensitiveHeadersLayer,
+            trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+        };
+
+        const SENSITIVE_HEADERS: [http::HeaderName; 3] = [
+            http::header::AUTHORIZATION,
+            http::header::COOKIE,
+            http::header::SET_COOKIE,
+        ];
 
         let api = axum::Router::new()
             .merge(self.group_router())
             .merge(self.user_router());
+        let layer = tower::ServiceBuilder::new()
+            .set_x_request_id(MakeRequestUuid)
+            .layer(SetSensitiveHeadersLayer::from_shared(std::sync::Arc::new(
+                SENSITIVE_HEADERS,
+            )))
+            .propagate_x_request_id()
+            .layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(DefaultMakeSpan::default().include_headers(true))
+                    .on_response(DefaultOnResponse::default().include_headers(true)),
+            );
         axum::Router::new()
             .route("/ping", get(async || "pong"))
             .nest("/api", api)
             .with_state(self)
+            .layer(layer)
     }
 }

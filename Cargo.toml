@@ -23,6 +23,8 @@ sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "tls-rustls
 tokio = { version = "1.45.1", features = ["full"] }
 tokio-stream = { version = "0.1.17", features = ["full"] }
 tokio-util = { version = "0.7.15", features = ["full"] }
+tower = { version = "0.5.2", features = ["util"] }
+tower-http = { version = "0.6.6", features = ["normalize-path", "request-id", "sensitive-headers", "tokio", "tower", "trace", "util"]}
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["chrono", "env-filter"] }
 uuid = { version = "1.17.0", features = ["serde", "v7"] }
