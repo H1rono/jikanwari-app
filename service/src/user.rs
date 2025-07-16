@@ -15,6 +15,35 @@ pub trait UserRepository<E: domain::Error>: Send + Sync {
     ) -> impl Future<Output = Result<User, E>> + Send;
 }
 
+impl<R, E> UserRepository<E> for &R
+where
+    R: UserRepository<E>,
+    E: domain::Error,
+{
+    fn get_user(&self, id: UserId) -> impl Future<Output = Result<User, E>> + Send {
+        R::get_user(self, id)
+    }
+
+    fn list_users(&self) -> impl Future<Output = Result<Vec<User>, E>> + Send {
+        R::list_users(self)
+    }
+
+    fn create_user(
+        &self,
+        params: CreateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send {
+        R::create_user(self, params)
+    }
+
+    fn update_user(
+        &self,
+        id: UserId,
+        params: UpdateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send {
+        R::update_user(self, id, params)
+    }
+}
+
 impl<C, E> UserService<C, E> for super::Service
 where
     C: UserRepository<E>,

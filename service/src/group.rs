@@ -25,6 +25,43 @@ pub trait GroupRepository<E: domain::Error>: Send + Sync {
     ) -> impl Future<Output = Result<Group, E>> + Send;
 }
 
+impl<R, E> GroupRepository<E> for &R
+where
+    R: GroupRepository<E>,
+    E: domain::Error,
+{
+    fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, E>> + Send {
+        R::get_group(self, id)
+    }
+
+    fn list_groups(&self) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send {
+        R::list_groups(self)
+    }
+
+    fn create_group(
+        &self,
+        params: CreateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::create_group(self, params)
+    }
+
+    fn update_group(
+        &self,
+        id: GroupId,
+        params: UpdateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::update_group(self, id, params)
+    }
+
+    fn update_group_members(
+        &self,
+        id: GroupId,
+        members: &[UserId],
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::update_group_members(self, id, members)
+    }
+}
+
 impl<C, E> GroupService<C, E> for super::Service
 where
     C: GroupRepository<E>,
