@@ -18,7 +18,16 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to bind TCP listener")?;
     axum::serve(listener, router)
+        .with_graceful_shutdown(signal())
         .await
         .context("Failed to start server")?;
     Ok(())
+}
+
+#[tracing::instrument]
+async fn signal() {
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => tracing::info!("Received Ctrl+C signal"),
+        Err(e) => tracing::error!(error = %e, "Failed to listen for Ctrl+C signal"),
+    }
 }
