@@ -2,6 +2,8 @@ use domain::{
     CreateGroupParams, Group, GroupCore, GroupId, GroupService, UpdateGroupParams, UserId,
 };
 
+// MARK: GroupRepository
+
 pub trait GroupRepository<E: domain::Error>: Send + Sync {
     fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, E>> + Send;
 
@@ -62,10 +64,57 @@ where
     }
 }
 
+// MARK: impl for Service
+
 impl<C, E> GroupService<C, E> for super::Service
 where
     C: GroupRepository<E>,
-    E: domain::Error,
+    E: crate::Error,
+{
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn get_group(&self, _ctx: C, id: GroupId) -> Result<Group, E> {
+        Err(E::unauthenticated("Unauthenticated access"))
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn list_groups(&self, _ctx: C) -> Result<Vec<GroupCore>, E> {
+        Err(E::unauthenticated("Unauthenticated access"))
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn create_group(&self, ctx: C, params: CreateGroupParams) -> Result<Group, E> {
+        ctx.create_group(params).await.inspect(|g| {
+            tracing::debug!(id = %g.id, members = g.members.len(), "Created group");
+        })
+    }
+
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn update_group(
+        &self,
+        _ctx: C,
+        id: GroupId,
+        _params: UpdateGroupParams,
+    ) -> Result<Group, E> {
+        Err(E::unauthenticated("Unauthenticated access"))
+    }
+
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn update_group_members(
+        &self,
+        _ctx: C,
+        id: GroupId,
+        _members: &[UserId],
+    ) -> Result<Group, E> {
+        Err(E::unauthenticated("Unauthenticated access"))
+    }
+}
+
+// MARK: impl for AuthenticatedService
+
+impl<C, E> GroupService<C, E> for super::AuthenticatedService
+where
+    C: GroupRepository<E>,
+    E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]
     async fn get_group(&self, ctx: C, id: GroupId) -> Result<Group, E> {
