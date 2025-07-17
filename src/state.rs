@@ -43,7 +43,33 @@ where
     }
 }
 
-impl<R> domain::ProvideGroupService for State<R>
+#[derive(Debug, Clone)]
+pub struct AuthnState<R> {
+    pub service: service::AuthenticatedService,
+    pub repository: R,
+}
+
+impl<R> service::MakeAuthenticated<crate::error::Error> for State<R>
+where
+    R: service::UserRepository<crate::error::Error>
+        + service::GroupRepository<crate::error::Error>
+        + Clone,
+{
+    type Authenticated = AuthnState<R>;
+
+    async fn make_authenticated(
+        &self,
+        user_id: domain::UserId,
+    ) -> Result<Self::Authenticated, crate::error::Error> {
+        let user = self.repository.get_user(user_id).await?;
+        Ok(AuthnState {
+            service: self.service.authenticated(user.id),
+            repository: self.repository.clone(),
+        })
+    }
+}
+
+impl<R> domain::ProvideGroupService for AuthnState<R>
 where
     R: service::GroupRepository<crate::error::Error>,
 {
@@ -53,7 +79,7 @@ where
         Self: 'a;
     type Error = crate::error::Error;
     type GroupService<'a>
-        = service::Service
+        = service::AuthenticatedService
     where
         Self: 'a;
 
@@ -62,6 +88,29 @@ where
     }
 
     fn group_service(&self) -> &Self::GroupService<'_> {
+        &self.service
+    }
+}
+
+impl<R> domain::ProvideUserService for AuthnState<R>
+where
+    R: service::UserRepository<crate::error::Error>,
+{
+    type Context<'a>
+        = &'a R
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+    type UserService<'a>
+        = service::AuthenticatedService
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {
+        &self.repository
+    }
+
+    fn user_service(&self) -> &Self::UserService<'_> {
         &self.service
     }
 }

@@ -10,6 +10,13 @@ impl Error {
             message: message.into(),
         }
     }
+
+    pub(crate) fn replace_status(self, status: http::StatusCode) -> Self {
+        Self {
+            status,
+            message: self.message,
+        }
+    }
 }
 
 impl From<std::convert::Infallible> for Error {

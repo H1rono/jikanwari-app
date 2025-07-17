@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use domain::{CreateGroupParams, Group, GroupCore, GroupId, UpdateGroupParams, UserId};
 
+use crate::authn::AuthenticatedService;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct GroupResponse {
     pub id: uuid::Uuid,
@@ -82,16 +84,49 @@ impl From<UpdateGroupRequest> for UpdateGroupParams {
     }
 }
 
-impl<T> crate::Service<T>
+impl<T, A> crate::Service<T>
 where
-    T: crate::StateRequirements,
+    T: crate::StateRequirements<Authn = A>,
+    A: crate::AuthenticatedRequirements<Err = T::Err>,
+{
+    pub(crate) fn group_router(&self) -> axum::Router<Self> {
+        use axum::Json;
+        use axum::extract::Path;
+        use axum::routing::{get, put};
+
+        axum::Router::new()
+            .route(
+                "/groups",
+                get(async |a: AuthenticatedService<A>| a.list_groups().await.map(Json)).post(
+                    async |a: AuthenticatedService<A>, Json(r)| a.create_group(r).await.map(Json),
+                ),
+            )
+            .route(
+                "/groups/{id}",
+                get(async |a: AuthenticatedService<A>, Path(id)| a.get_group(id).await.map(Json))
+                    .put(async |a: AuthenticatedService<A>, Path(id), Json(r)| {
+                        a.update_group(id, r).await.map(Json)
+                    }),
+            )
+            .route(
+                "/groups/{id}/members",
+                put(async |a: AuthenticatedService<A>, Path(id), Json(r)| {
+                    a.update_group_members(id, r).await.map(Json)
+                }),
+            )
+    }
+}
+
+impl<A> AuthenticatedService<A>
+where
+    A: crate::AuthenticatedRequirements,
 {
     pub(crate) async fn get_group(
         &self,
         group_id: uuid::Uuid,
     ) -> Result<GroupResponse, crate::Error> {
         let group = self
-            .0
+            .service
             .get_group(GroupId::new(group_id))
             .await
             .map_err(Into::into)?;
@@ -99,7 +134,7 @@ where
     }
 
     pub(crate) async fn list_groups(&self) -> Result<Vec<GroupCoreResponse>, crate::Error> {
-        let groups = self.0.list_groups().await.map_err(Into::into)?;
+        let groups = self.service.list_groups().await.map_err(Into::into)?;
         let groups: Vec<_> = groups.into_iter().map(GroupCoreResponse::from).collect();
         Ok(groups)
     }
@@ -109,7 +144,7 @@ where
         request: CreateGroupRequest,
     ) -> Result<GroupResponse, crate::Error> {
         let group = self
-            .0
+            .service
             .create_group(request.into())
             .await
             .map_err(Into::into)?;
@@ -122,7 +157,7 @@ where
         request: UpdateGroupRequest,
     ) -> Result<GroupResponse, crate::Error> {
         let group = self
-            .0
+            .service
             .update_group(GroupId::new(group_id), request.into())
             .await
             .map_err(Into::into)?;
@@ -134,39 +169,12 @@ where
         group_id: uuid::Uuid,
         members: Vec<uuid::Uuid>,
     ) -> Result<GroupResponse, crate::Error> {
-        let members: Vec<_> = members.into_iter().map(UserId::new).collect();
+        let members: Vec<_> = members.into_iter().map(domain::UserId::new).collect();
         let group = self
-            .0
+            .service
             .update_group_members(GroupId::new(group_id), &members)
             .await
             .map_err(Into::into)?;
         Ok(group.into())
-    }
-
-    pub(crate) fn group_router(&self) -> axum::Router<Self> {
-        use axum::Json;
-        use axum::extract::{Path, State};
-        use axum::routing::{get, put};
-
-        axum::Router::new()
-            .route(
-                "/groups",
-                get(async |State(s): State<Self>| s.list_groups().await.map(Json))
-                    .post(async |State(s): State<Self>, Json(r)| s.create_group(r).await.map(Json)),
-            )
-            .route(
-                "/groups/{id}",
-                get(async |State(s): State<Self>, Path(id)| s.get_group(id).await.map(Json)).put(
-                    async |State(s): State<Self>, Path(id), Json(r)| {
-                        s.update_group(id, r).await.map(Json)
-                    },
-                ),
-            )
-            .route(
-                "/groups/{id}/members",
-                put(async |State(s): State<Self>, Path(id), Json(r)| {
-                    s.update_group_members(id, r).await.map(Json)
-                }),
-            )
     }
 }

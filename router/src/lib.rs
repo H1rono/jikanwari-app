@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod authn;
 pub mod error;
 mod group;
 mod user;
@@ -10,15 +11,36 @@ pub struct Service<T>(Arc<T>);
 
 pub trait StateRequirements:
     domain::ProvideUserService<Error = Self::Err>
+    + service::MakeAuthenticated<Self::Err, Authenticated = Self::Authn>
+    + 'static
+{
+    type Authn: AuthenticatedRequirements<Err = Self::Err>;
+    type Err: domain::Error + Into<Error>;
+}
+
+pub trait AuthenticatedRequirements:
+    domain::ProvideUserService<Error = Self::Err>
     + domain::ProvideGroupService<Error = Self::Err>
     + 'static
 {
     type Err: domain::Error + Into<Error>;
 }
 
-impl<T, E> StateRequirements for T
+impl<T, A, E> StateRequirements for T
 where
-    T: domain::ProvideUserService<Error = E> + domain::ProvideGroupService<Error = E> + 'static,
+    T: domain::ProvideUserService<Error = E>
+        + service::MakeAuthenticated<E, Authenticated = A>
+        + 'static,
+    E: domain::Error + Into<Error>,
+    A: AuthenticatedRequirements<Err = E> + 'static,
+{
+    type Authn = A;
+    type Err = E;
+}
+
+impl<A, E> AuthenticatedRequirements for A
+where
+    A: domain::ProvideUserService<Error = E> + domain::ProvideGroupService<Error = E> + 'static,
     E: domain::Error + Into<Error>,
 {
     type Err = E;
