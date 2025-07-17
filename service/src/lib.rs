@@ -16,10 +16,13 @@ impl Service {
     }
 }
 
-pub trait MakeAuthenticated: Send + Sync {
+pub trait MakeAuthenticated<E>: Send + Sync {
     type Authenticated: Send + Sync;
 
-    fn make_authenticated(&self, user_id: domain::UserId) -> Self::Authenticated;
+    fn make_authenticated(
+        &self,
+        user_id: domain::UserId,
+    ) -> impl Future<Output = Result<Self::Authenticated, E>> + Send;
 }
 
 #[expect(dead_code)]
@@ -29,10 +32,8 @@ pub struct AuthenticatedService {
     user_id: domain::UserId,
 }
 
-impl MakeAuthenticated for Service {
-    type Authenticated = AuthenticatedService;
-
-    fn make_authenticated(&self, user_id: domain::UserId) -> Self::Authenticated {
+impl Service {
+    pub fn authenticated(&self, user_id: domain::UserId) -> AuthenticatedService {
         AuthenticatedService {
             service: *self,
             user_id,
