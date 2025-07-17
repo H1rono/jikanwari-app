@@ -7,8 +7,10 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 bytes.workspace = true
 chrono.workspace = true
+headers.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
