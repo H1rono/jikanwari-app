@@ -1,4 +1,5 @@
 mod group;
+mod rbac;
 mod user;
 
 pub trait Error: domain::Error {
@@ -42,4 +43,5 @@ impl Service {
 }
 
 pub use group::GroupRepository;
+pub use rbac::{GroupAccessControl, Judgement, Principal, UserAccessControl};
 pub use user::UserRepository;
