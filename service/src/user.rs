@@ -1,50 +1,119 @@
 use domain::{CreateUserParams, UpdateUserParams, User, UserId, UserService};
 
-use crate::rbac::UserAccessControl;
+use crate::rbac::ProvideUserAccessControl;
 
 // MARK: UserRepository
 
-pub trait UserRepository<E: domain::Error>: Send + Sync {
-    fn get_user(&self, id: UserId) -> impl Future<Output = Result<User, E>> + Send;
+pub trait UserRepository<Context, E: domain::Error>: Send + Sync {
+    fn get_user(&self, ctx: Context, id: UserId) -> impl Future<Output = Result<User, E>> + Send;
 
-    fn list_users(&self) -> impl Future<Output = Result<Vec<User>, E>> + Send;
+    fn list_users(&self, ctx: Context) -> impl Future<Output = Result<Vec<User>, E>> + Send;
 
-    fn create_user(&self, params: CreateUserParams)
-    -> impl Future<Output = Result<User, E>> + Send;
+    fn create_user(
+        &self,
+        ctx: Context,
+        params: CreateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send;
 
     fn update_user(
         &self,
+        ctx: Context,
         id: UserId,
         params: UpdateUserParams,
     ) -> impl Future<Output = Result<User, E>> + Send;
 }
 
-impl<R, E> UserRepository<E> for &R
+impl<R, C, E> UserRepository<C, E> for &R
 where
-    R: UserRepository<E>,
+    R: UserRepository<C, E>,
     E: domain::Error,
 {
-    fn get_user(&self, id: UserId) -> impl Future<Output = Result<User, E>> + Send {
-        R::get_user(self, id)
+    fn get_user(&self, ctx: C, id: UserId) -> impl Future<Output = Result<User, E>> + Send {
+        R::get_user(self, ctx, id)
     }
 
-    fn list_users(&self) -> impl Future<Output = Result<Vec<User>, E>> + Send {
-        R::list_users(self)
+    fn list_users(&self, ctx: C) -> impl Future<Output = Result<Vec<User>, E>> + Send {
+        R::list_users(self, ctx)
+    }
+
+    fn create_user(
+        &self,
+        ctx: C,
+        params: CreateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send {
+        R::create_user(self, ctx, params)
+    }
+
+    fn update_user(
+        &self,
+        ctx: C,
+        id: UserId,
+        params: UpdateUserParams,
+    ) -> impl Future<Output = Result<User, E>> + Send {
+        R::update_user(self, ctx, id, params)
+    }
+}
+
+pub trait ProvideUserRepository: Send + Sync {
+    type Context<'a>: Send + Sync
+    where
+        Self: 'a;
+    type Error: domain::Error;
+    type UserRepository<'a>: UserRepository<Self::Context<'a>, Self::Error>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_>;
+    fn user_repository(&self) -> &Self::UserRepository<'_>;
+
+    fn get_user(&self, id: UserId) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_repository().get_user(ctx, id)
+    }
+
+    fn list_users(&self) -> impl Future<Output = Result<Vec<User>, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_repository().list_users(ctx)
     }
 
     fn create_user(
         &self,
         params: CreateUserParams,
-    ) -> impl Future<Output = Result<User, E>> + Send {
-        R::create_user(self, params)
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_repository().create_user(ctx, params)
     }
 
     fn update_user(
         &self,
         id: UserId,
         params: UpdateUserParams,
-    ) -> impl Future<Output = Result<User, E>> + Send {
-        R::update_user(self, id, params)
+    ) -> impl Future<Output = Result<User, Self::Error>> + Send {
+        let ctx = self.context();
+        self.user_repository().update_user(ctx, id, params)
+    }
+}
+
+impl<R> ProvideUserRepository for &R
+where
+    R: ProvideUserRepository,
+{
+    type Context<'a>
+        = R::Context<'a>
+    where
+        Self: 'a;
+    type Error = R::Error;
+    type UserRepository<'a>
+        = R::UserRepository<'a>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {
+        R::context(self)
+    }
+
+    fn user_repository(&self) -> &Self::UserRepository<'_> {
+        R::user_repository(self)
     }
 }
 
@@ -52,7 +121,7 @@ where
 
 impl<C, E> UserService<C, E> for super::Service
 where
-    C: UserRepository<E> + UserAccessControl<E>,
+    C: ProvideUserRepository<Error = E> + ProvideUserAccessControl<Error = E>,
     E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]
@@ -112,7 +181,7 @@ where
 
 impl<C, E> UserService<C, E> for super::AuthenticatedService
 where
-    C: UserRepository<E> + UserAccessControl<E>,
+    C: ProvideUserRepository<Error = E> + ProvideUserAccessControl<Error = E>,
     E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]

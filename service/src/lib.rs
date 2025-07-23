@@ -43,6 +43,9 @@ impl Service {
     }
 }
 
-pub use group::GroupRepository;
-pub use rbac::{GroupAccessControl, Judgement, Principal, UserAccessControl};
-pub use user::UserRepository;
+pub use group::{GroupRepository, ProvideGroupRepository};
+pub use rbac::{
+    GroupAccessControl, Judgement, Principal, ProvideGroupAccessControl, ProvideUserAccessControl,
+    UserAccessControl,
+};
+pub use user::{ProvideUserRepository, UserRepository};

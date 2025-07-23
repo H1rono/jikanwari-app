@@ -2,67 +2,124 @@ use domain::{
     CreateGroupParams, Group, GroupCore, GroupId, GroupService, UpdateGroupParams, UserId,
 };
 
-use crate::rbac::GroupAccessControl;
+use crate::rbac::ProvideGroupAccessControl;
 
 // MARK: GroupRepository
 
-pub trait GroupRepository<E: domain::Error>: Send + Sync {
-    fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, E>> + Send;
+pub trait GroupRepository<Context, E: domain::Error>: Send + Sync {
+    fn get_group(&self, ctx: Context, id: GroupId)
+    -> impl Future<Output = Result<Group, E>> + Send;
 
-    fn list_groups(&self) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send;
+    fn list_groups(&self, ctx: Context) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send;
 
     fn create_group(
         &self,
+        ctx: Context,
         params: CreateGroupParams,
     ) -> impl Future<Output = Result<Group, E>> + Send;
 
     fn update_group(
         &self,
+        ctx: Context,
         id: GroupId,
         params: UpdateGroupParams,
     ) -> impl Future<Output = Result<Group, E>> + Send;
 
     fn update_group_members(
         &self,
+        ctx: Context,
         id: GroupId,
         members: &[UserId],
     ) -> impl Future<Output = Result<Group, E>> + Send;
 }
 
-impl<R, E> GroupRepository<E> for &R
+impl<R, C, E> GroupRepository<C, E> for &R
 where
-    R: GroupRepository<E>,
+    R: GroupRepository<C, E>,
     E: domain::Error,
 {
-    fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, E>> + Send {
-        R::get_group(self, id)
+    fn get_group(&self, ctx: C, id: GroupId) -> impl Future<Output = Result<Group, E>> + Send {
+        R::get_group(self, ctx, id)
     }
 
-    fn list_groups(&self) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send {
-        R::list_groups(self)
+    fn list_groups(&self, ctx: C) -> impl Future<Output = Result<Vec<GroupCore>, E>> + Send {
+        R::list_groups(self, ctx)
+    }
+
+    fn create_group(
+        &self,
+        ctx: C,
+        params: CreateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::create_group(self, ctx, params)
+    }
+
+    fn update_group(
+        &self,
+        ctx: C,
+        id: GroupId,
+        params: UpdateGroupParams,
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::update_group(self, ctx, id, params)
+    }
+
+    fn update_group_members(
+        &self,
+        ctx: C,
+        id: GroupId,
+        members: &[UserId],
+    ) -> impl Future<Output = Result<Group, E>> + Send {
+        R::update_group_members(self, ctx, id, members)
+    }
+}
+
+pub trait ProvideGroupRepository: Send + Sync {
+    type Context<'a>: Send + Sync
+    where
+        Self: 'a;
+    type Error: domain::Error;
+    type GroupRepository<'a>: GroupRepository<Self::Context<'a>, Self::Error>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_>;
+    fn group_repository(&self) -> &Self::GroupRepository<'_>;
+
+    fn get_group(&self, id: GroupId) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_repository().get_group(ctx, id)
+    }
+
+    fn list_groups(&self) -> impl Future<Output = Result<Vec<GroupCore>, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_repository().list_groups(ctx)
     }
 
     fn create_group(
         &self,
         params: CreateGroupParams,
-    ) -> impl Future<Output = Result<Group, E>> + Send {
-        R::create_group(self, params)
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_repository().create_group(ctx, params)
     }
 
     fn update_group(
         &self,
         id: GroupId,
         params: UpdateGroupParams,
-    ) -> impl Future<Output = Result<Group, E>> + Send {
-        R::update_group(self, id, params)
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_repository().update_group(ctx, id, params)
     }
 
     fn update_group_members(
         &self,
         id: GroupId,
         members: &[UserId],
-    ) -> impl Future<Output = Result<Group, E>> + Send {
-        R::update_group_members(self, id, members)
+    ) -> impl Future<Output = Result<Group, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_repository()
+            .update_group_members(ctx, id, members)
     }
 }
 
@@ -70,7 +127,7 @@ where
 
 impl<C, E> GroupService<C, E> for super::Service
 where
-    C: GroupRepository<E> + GroupAccessControl<E>,
+    C: ProvideGroupRepository<Error = E> + ProvideGroupAccessControl<Error = E>,
     E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]
@@ -153,7 +210,7 @@ where
 
 impl<C, E> GroupService<C, E> for super::AuthenticatedService
 where
-    C: GroupRepository<E> + GroupAccessControl<E>,
+    C: ProvideGroupRepository<Error = E> + ProvideGroupAccessControl<Error = E>,
     E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]
