@@ -1,0 +1,13 @@
+[package]
+name = "authz"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bitflags.workspace = true
+cedar-policy.workspace = true
+
+domain.path = "../domain"
+service.path = "../service"
