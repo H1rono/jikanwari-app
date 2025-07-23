@@ -10,6 +10,45 @@ pub enum Judgement {
     Deny,
 }
 
+impl Judgement {
+    pub fn from_bool(allow: bool) -> Self {
+        if allow {
+            Judgement::Allow
+        } else {
+            Judgement::Deny
+        }
+    }
+
+    pub fn into_bool(self) -> bool {
+        match self {
+            Judgement::Allow => true,
+            Judgement::Deny => false,
+        }
+    }
+
+    pub(crate) fn allow_or_else<F, E>(self, f: F) -> Result<(), E>
+    where
+        F: FnOnce() -> E,
+    {
+        match self {
+            Judgement::Allow => Ok(()),
+            Judgement::Deny => Err(f()),
+        }
+    }
+}
+
+impl From<bool> for Judgement {
+    fn from(allow: bool) -> Self {
+        Self::from_bool(allow)
+    }
+}
+
+impl From<Judgement> for bool {
+    fn from(judgement: Judgement) -> Self {
+        judgement.into_bool()
+    }
+}
+
 pub trait UserAccessControl<E: domain::Error>: Send + Sync {
     fn allow_get_user(
         &self,
