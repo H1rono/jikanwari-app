@@ -4,6 +4,18 @@ pub enum Principal {
     User(domain::UserId),
 }
 
+impl crate::Service {
+    pub(crate) fn principal(&self) -> Principal {
+        Principal::Anonymous
+    }
+}
+
+impl crate::AuthenticatedService {
+    pub(crate) fn principal(&self) -> Principal {
+        Principal::User(self.user_id)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Judgement {
     Allow,

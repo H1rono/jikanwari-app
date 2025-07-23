@@ -2,6 +2,8 @@ use domain::{
     CreateGroupParams, Group, GroupCore, GroupId, GroupService, UpdateGroupParams, UserId,
 };
 
+use crate::rbac::GroupAccessControl;
+
 // MARK: GroupRepository
 
 pub trait GroupRepository<E: domain::Error>: Send + Sync {
@@ -68,56 +70,17 @@ where
 
 impl<C, E> GroupService<C, E> for super::Service
 where
-    C: GroupRepository<E>,
-    E: crate::Error,
-{
-    #[tracing::instrument(skip_all, fields(id = %id))]
-    async fn get_group(&self, _ctx: C, id: GroupId) -> Result<Group, E> {
-        Err(E::unauthenticated("Unauthenticated access"))
-    }
-
-    #[tracing::instrument(skip_all)]
-    async fn list_groups(&self, _ctx: C) -> Result<Vec<GroupCore>, E> {
-        Err(E::unauthenticated("Unauthenticated access"))
-    }
-
-    #[tracing::instrument(skip_all)]
-    async fn create_group(&self, ctx: C, params: CreateGroupParams) -> Result<Group, E> {
-        ctx.create_group(params).await.inspect(|g| {
-            tracing::debug!(id = %g.id, members = g.members.len(), "Created group");
-        })
-    }
-
-    #[tracing::instrument(skip_all, fields(id = %id))]
-    async fn update_group(
-        &self,
-        _ctx: C,
-        id: GroupId,
-        _params: UpdateGroupParams,
-    ) -> Result<Group, E> {
-        Err(E::unauthenticated("Unauthenticated access"))
-    }
-
-    #[tracing::instrument(skip_all, fields(id = %id))]
-    async fn update_group_members(
-        &self,
-        _ctx: C,
-        id: GroupId,
-        _members: &[UserId],
-    ) -> Result<Group, E> {
-        Err(E::unauthenticated("Unauthenticated access"))
-    }
-}
-
-// MARK: impl for AuthenticatedService
-
-impl<C, E> GroupService<C, E> for super::AuthenticatedService
-where
-    C: GroupRepository<E>,
+    C: GroupRepository<E> + GroupAccessControl<E>,
     E: crate::Error,
 {
     #[tracing::instrument(skip_all, fields(id = %id))]
     async fn get_group(&self, ctx: C, id: GroupId) -> Result<Group, E> {
+        ctx.judge_get_group(self.principal(), id)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "Anonymous access denied for group retrieval");
+                E::unauthenticated("Unauthenticated access")
+            })?;
         ctx.get_group(id).await.inspect(|g| {
             tracing::debug!(id = %g.id, "Retrieved group");
         })
@@ -125,6 +88,12 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn list_groups(&self, ctx: C) -> Result<Vec<GroupCore>, E> {
+        ctx.judge_list_groups(self.principal())
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!("Anonymous access denied for group listing");
+                E::unauthenticated("Unauthenticated access")
+            })?;
         ctx.list_groups().await.inspect(|gs| {
             tracing::debug!(count = gs.len(), "Listed groups");
         })
@@ -132,6 +101,12 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn create_group(&self, ctx: C, params: CreateGroupParams) -> Result<Group, E> {
+        ctx.judge_create_group(self.principal(), &params)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!("Anonymous access denied for group creation");
+                E::unauthenticated("Unauthenticated access")
+            })?;
         ctx.create_group(params).await.inspect(|g| {
             tracing::debug!(id = %g.id, members = g.members.len(), "Created group");
         })
@@ -144,6 +119,12 @@ where
         id: GroupId,
         params: UpdateGroupParams,
     ) -> Result<Group, E> {
+        ctx.judge_update_group(self.principal(), id, &params)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "Anonymous access denied for group update");
+                E::unauthenticated("Unauthenticated access")
+            })?;
         ctx.update_group(id, params).await.inspect(|g| {
             tracing::debug!(id = %g.id, "Updated group");
         })
@@ -156,6 +137,95 @@ where
         id: GroupId,
         members: &[UserId],
     ) -> Result<Group, E> {
+        ctx.judge_update_group_members(self.principal(), id, members)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "Anonymous access denied for group members update");
+                E::unauthenticated("Unauthenticated access")
+            })?;
+        ctx.update_group_members(id, members).await.inspect(|g| {
+            tracing::debug!(id = %g.id, members = g.members.len(), "Updated group members");
+        })
+    }
+}
+
+// MARK: impl for AuthenticatedService
+
+impl<C, E> GroupService<C, E> for super::AuthenticatedService
+where
+    C: GroupRepository<E> + GroupAccessControl<E>,
+    E: crate::Error,
+{
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn get_group(&self, ctx: C, id: GroupId) -> Result<Group, E> {
+        ctx.judge_get_group(self.principal(), id)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "User access denied for group retrieval");
+                E::forbidden("Access forbidden")
+            })?;
+        ctx.get_group(id).await.inspect(|g| {
+            tracing::debug!(id = %g.id, "Retrieved group");
+        })
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn list_groups(&self, ctx: C) -> Result<Vec<GroupCore>, E> {
+        ctx.judge_list_groups(self.principal())
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!("User access denied for group listing");
+                E::forbidden("Access forbidden")
+            })?;
+        ctx.list_groups().await.inspect(|gs| {
+            tracing::debug!(count = gs.len(), "Listed groups");
+        })
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn create_group(&self, ctx: C, params: CreateGroupParams) -> Result<Group, E> {
+        ctx.judge_create_group(self.principal(), &params)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!("User access denied for group creation");
+                E::forbidden("Access forbidden")
+            })?;
+        ctx.create_group(params).await.inspect(|g| {
+            tracing::debug!(id = %g.id, members = g.members.len(), "Created group");
+        })
+    }
+
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn update_group(
+        &self,
+        ctx: C,
+        id: GroupId,
+        params: UpdateGroupParams,
+    ) -> Result<Group, E> {
+        ctx.judge_update_group(self.principal(), id, &params)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "User access denied for group update");
+                E::forbidden("Access forbidden")
+            })?;
+        ctx.update_group(id, params).await.inspect(|g| {
+            tracing::debug!(id = %g.id, "Updated group");
+        })
+    }
+
+    #[tracing::instrument(skip_all, fields(id = %id))]
+    async fn update_group_members(
+        &self,
+        ctx: C,
+        id: GroupId,
+        members: &[UserId],
+    ) -> Result<Group, E> {
+        ctx.judge_update_group_members(self.principal(), id, members)
+            .await?
+            .allow_or_else(|| {
+                tracing::debug!(id = %id, "User access denied for group members update");
+                E::forbidden("Access forbidden")
+            })?;
         ctx.update_group_members(id, members).await.inspect(|g| {
             tracing::debug!(id = %g.id, members = g.members.len(), "Updated group members");
         })
