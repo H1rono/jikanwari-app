@@ -1,31 +1,56 @@
 use anyhow::Context;
 
+use repository::Repository;
+
+// MARK: structs
+
 #[derive(Debug, Clone)]
-pub struct State<R> {
+pub struct State {
     service: service::Service,
-    repository: R,
+    repository: Repository,
+    pg_pool: sqlx::PgPool,
 }
 
-impl State<repository::Repository> {
+#[derive(Debug, Clone, Copy)]
+pub struct ServiceContext<'a> {
+    repository: &'a Repository,
+    pg_pool: &'a sqlx::PgPool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthnState {
+    pub service: service::AuthenticatedService,
+    pub repository: Repository,
+    pub pg_pool: sqlx::PgPool,
+}
+
+// MARK: impl State
+
+impl State {
     pub async fn load_pg(config: &crate::config::PgConfig) -> anyhow::Result<Self> {
         let conn_opts = config.conn_options();
         let pool = sqlx::PgPool::connect_with(conn_opts)
             .await
             .context("Failed to connect to PostgreSQL")?;
-        let repository = repository::Repository::up(pool).await?;
+        let repository = repository::Repository::up(&pool).await?;
         Ok(Self {
             service: service::Service::new(),
             repository,
+            pg_pool: pool,
         })
+    }
+
+    fn service_context(&self) -> ServiceContext<'_> {
+        ServiceContext {
+            repository: &self.repository,
+            pg_pool: &self.pg_pool,
+        }
     }
 }
 
-impl<R> domain::ProvideUserService for State<R>
-where
-    R: service::UserRepository<crate::error::Error>,
-{
+impl domain::ProvideUserService for State {
     type Context<'a>
-        = &'a R
+        = ServiceContext<'a>
     where
         Self: 'a;
     type Error = crate::error::Error;
@@ -35,7 +60,7 @@ where
         Self: 'a;
 
     fn context(&self) -> Self::Context<'_> {
-        &self.repository
+        self.service_context()
     }
 
     fn user_service(&self) -> &Self::UserService<'_> {
@@ -43,38 +68,38 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AuthnState<R> {
-    pub service: service::AuthenticatedService,
-    pub repository: R,
-}
-
-impl<R> service::MakeAuthenticated<crate::error::Error> for State<R>
-where
-    R: service::UserRepository<crate::error::Error>
-        + service::GroupRepository<crate::error::Error>
-        + Clone,
-{
-    type Authenticated = AuthnState<R>;
+impl service::MakeAuthenticated<crate::error::Error> for State {
+    type Authenticated = AuthnState;
 
     async fn make_authenticated(
         &self,
         user_id: domain::UserId,
     ) -> Result<Self::Authenticated, crate::error::Error> {
-        let user = self.repository.get_user(user_id).await?;
+        use service::ProvideUserRepository;
+
+        let user = self.service_context().get_user(user_id).await?;
         Ok(AuthnState {
             service: self.service.authenticated(user.id),
             repository: self.repository.clone(),
+            pg_pool: self.pg_pool.clone(),
         })
     }
 }
 
-impl<R> domain::ProvideGroupService for AuthnState<R>
-where
-    R: service::GroupRepository<crate::error::Error>,
-{
+// MARK: impl AuthnState
+
+impl AuthnState {
+    fn service_context(&self) -> ServiceContext<'_> {
+        ServiceContext {
+            repository: &self.repository,
+            pg_pool: &self.pg_pool,
+        }
+    }
+}
+
+impl domain::ProvideGroupService for AuthnState {
     type Context<'a>
-        = &'a R
+        = ServiceContext<'a>
     where
         Self: 'a;
     type Error = crate::error::Error;
@@ -84,7 +109,7 @@ where
         Self: 'a;
 
     fn context(&self) -> Self::Context<'_> {
-        &self.repository
+        self.service_context()
     }
 
     fn group_service(&self) -> &Self::GroupService<'_> {
@@ -92,12 +117,9 @@ where
     }
 }
 
-impl<R> domain::ProvideUserService for AuthnState<R>
-where
-    R: service::UserRepository<crate::error::Error>,
-{
+impl domain::ProvideUserService for AuthnState {
     type Context<'a>
-        = &'a R
+        = ServiceContext<'a>
     where
         Self: 'a;
     type Error = crate::error::Error;
@@ -107,10 +129,52 @@ where
         Self: 'a;
 
     fn context(&self) -> Self::Context<'_> {
-        &self.repository
+        self.service_context()
     }
 
     fn user_service(&self) -> &Self::UserService<'_> {
         &self.service
+    }
+}
+
+// MARK: impl ServiceContext
+
+impl service::ProvideUserRepository for ServiceContext<'_> {
+    type Context<'a>
+        = &'a sqlx::PgPool
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+    type UserRepository<'a>
+        = Repository
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {
+        self.pg_pool
+    }
+
+    fn user_repository(&self) -> &Self::UserRepository<'_> {
+        &self.repository
+    }
+}
+
+impl service::ProvideGroupRepository for ServiceContext<'_> {
+    type Context<'a>
+        = &'a sqlx::PgPool
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+    type GroupRepository<'a>
+        = Repository
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {
+        self.pg_pool
+    }
+
+    fn group_repository(&self) -> &Self::GroupRepository<'_> {
+        &self.repository
     }
 }
