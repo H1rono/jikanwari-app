@@ -3,31 +3,30 @@ mod user;
 
 #[derive(Debug, Clone)]
 pub struct Repository {
-    pool: sqlx::PgPool,
+    _priv: (),
 }
 
 impl Repository {
     const MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
-    pub async fn up(pool: sqlx::PgPool) -> anyhow::Result<Self> {
+    pub async fn up(pool: &sqlx::PgPool) -> anyhow::Result<Self> {
         use anyhow::Context;
 
         Self::MIGRATOR
-            .run(&pool)
+            .run(pool)
             .await
             .context("Failed to run migrations")?;
-        Ok(Self { pool })
+        Ok(Self { _priv: () })
     }
 
-    async fn within_tx<F, T, E>(&self, f: F) -> Result<T, E>
+    async fn within_tx<F, T, E>(&self, pool: &sqlx::PgPool, f: F) -> Result<T, E>
     where
         F: AsyncFnOnce(&mut sqlx::PgConnection) -> Result<T, E>,
         E: crate::Error,
     {
         use anyhow::Context;
 
-        let mut tx = self
-            .pool
+        let mut tx = pool
             .begin()
             .await
             .context("Failed to begin postgres transaction")?;
@@ -49,4 +48,23 @@ impl Repository {
 
 pub trait Error: domain::Error + From<anyhow::Error> {
     fn not_found(message: &str) -> Self;
+}
+
+pub trait AsPgPool: Send + Sync {
+    fn as_pg_pool(&self) -> &sqlx::PgPool;
+}
+
+impl AsPgPool for sqlx::PgPool {
+    fn as_pg_pool(&self) -> &sqlx::PgPool {
+        self
+    }
+}
+
+impl<P> AsPgPool for &P
+where
+    P: AsPgPool + ?Sized,
+{
+    fn as_pg_pool(&self) -> &sqlx::PgPool {
+        P::as_pg_pool(self)
+    }
 }

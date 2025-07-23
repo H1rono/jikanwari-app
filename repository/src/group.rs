@@ -67,10 +67,14 @@ pub struct GroupMemberRow {
     pub user_id: uuid::Uuid,
 }
 
-impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
-    async fn get_group(&self, id: domain::GroupId) -> Result<domain::Group, E> {
+impl<C, E> service::GroupRepository<C, E> for crate::Repository
+where
+    C: crate::AsPgPool,
+    E: crate::Error,
+{
+    async fn get_group(&self, ctx: C, id: domain::GroupId) -> Result<domain::Group, E> {
         let group = sqlx::query_file_as!(GroupRow, "queries/get_group.sql", id.into_inner())
-            .fetch_one(&self.pool)
+            .fetch_one(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while fetching group");
@@ -79,9 +83,9 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         Ok(group.into())
     }
 
-    async fn list_groups(&self) -> Result<Vec<domain::GroupCore>, E> {
+    async fn list_groups(&self, ctx: C) -> Result<Vec<domain::GroupCore>, E> {
         let groups = sqlx::query_file_as!(GroupCoreRow, "queries/list_groups.sql")
-            .fetch_all(&self.pool)
+            .fetch_all(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while listing groups");
@@ -90,14 +94,23 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
         Ok(groups.into_iter().map(Into::into).collect())
     }
 
-    async fn create_group(&self, params: domain::CreateGroupParams) -> Result<domain::Group, E> {
+    async fn create_group(
+        &self,
+        ctx: C,
+        params: domain::CreateGroupParams,
+    ) -> Result<domain::Group, E> {
         // TODO: transaction
+        let mut conn = ctx
+            .as_pg_pool()
+            .acquire()
+            .await
+            .context("Failed to acquire connection")?;
         let id = uuid::Uuid::now_v7();
         let domain::CreateGroupParams { name, members } = params;
         let members: Vec<_> = members.into_iter().map(|id| id.into_inner()).collect();
         let group_core =
             sqlx::query_file_as!(GroupCoreRow, "queries/create_group_core.sql", id, name)
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *conn)
                 .await
                 .inspect_err(|e| {
                     tracing::error!(error = %e, "Postgres error while creating group core");
@@ -109,7 +122,7 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             id,
             &members
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .inspect_err(|e| {
             tracing::error!(error = %e, "Postgres error while creating group members");
@@ -136,13 +149,14 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
 
     async fn update_group(
         &self,
+        ctx: C,
         id: domain::GroupId,
         params: domain::UpdateGroupParams,
     ) -> Result<domain::Group, E> {
         let domain::UpdateGroupParams { name } = params;
         let group =
             sqlx::query_file_as!(GroupRow, "queries/update_group.sql", id.into_inner(), name)
-                .fetch_one(&self.pool)
+                .fetch_one(ctx.as_pg_pool())
                 .await
                 .inspect_err(|e| {
                     tracing::error!(error = %e, "Postgres error while updating group");
@@ -153,6 +167,7 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
 
     async fn update_group_members(
         &self,
+        ctx: C,
         id: domain::GroupId,
         members: &[domain::UserId],
     ) -> Result<domain::Group, E> {
@@ -162,7 +177,7 @@ impl<E: crate::Error> service::GroupRepository<E> for crate::Repository {
             member_count: i64,
         }
 
-        self.within_tx(async |conn| {
+        self.within_tx(ctx.as_pg_pool(), async |conn| {
             let members: Vec<_> = members.iter().map(|id| id.into_inner()).collect();
             let check = sqlx::query_file_as!(
                 Check,

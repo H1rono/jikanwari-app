@@ -28,10 +28,14 @@ impl From<UserRow> for domain::User {
     }
 }
 
-impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
-    async fn get_user(&self, id: domain::UserId) -> Result<domain::User, E> {
+impl<C, E> service::UserRepository<C, E> for crate::Repository
+where
+    C: crate::AsPgPool,
+    E: crate::Error,
+{
+    async fn get_user(&self, ctx: C, id: domain::UserId) -> Result<domain::User, E> {
         let user = sqlx::query_file_as!(UserRow, "queries/get_user.sql", id.into_inner())
-            .fetch_optional(&self.pool)
+            .fetch_optional(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while fetching user");
@@ -41,9 +45,9 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         Ok(user.into())
     }
 
-    async fn list_users(&self) -> Result<Vec<domain::User>, E> {
+    async fn list_users(&self, ctx: C) -> Result<Vec<domain::User>, E> {
         let users = sqlx::query_file_as!(UserRow, "queries/list_users.sql")
-            .fetch_all(&self.pool)
+            .fetch_all(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while listing users");
@@ -52,11 +56,15 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
         Ok(users.into_iter().map(Into::into).collect())
     }
 
-    async fn create_user(&self, params: domain::CreateUserParams) -> Result<domain::User, E> {
+    async fn create_user(
+        &self,
+        ctx: C,
+        params: domain::CreateUserParams,
+    ) -> Result<domain::User, E> {
         let id = uuid::Uuid::now_v7();
         let domain::CreateUserParams { name } = params;
         let user = sqlx::query_file_as!(UserRow, "queries/create_user.sql", id, name)
-            .fetch_one(&self.pool)
+            .fetch_one(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while creating user");
@@ -67,12 +75,13 @@ impl<E: crate::Error> service::UserRepository<E> for crate::Repository {
 
     async fn update_user(
         &self,
+        ctx: C,
         id: domain::UserId,
         params: domain::UpdateUserParams,
     ) -> Result<domain::User, E> {
         let domain::UpdateUserParams { name } = params;
         let user = sqlx::query_file_as!(UserRow, "queries/update_user.sql", id.into_inner(), name)
-            .fetch_one(&self.pool)
+            .fetch_one(ctx.as_pg_pool())
             .await
             .inspect_err(|e| {
                 tracing::error!(error = %e, "Postgres error while updating user");
