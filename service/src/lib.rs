@@ -4,6 +4,7 @@ mod user;
 
 pub trait Error: domain::Error {
     fn unauthenticated(message: &str) -> Self;
+    fn forbidden(message: &str) -> Self;
 }
 
 #[must_use]
