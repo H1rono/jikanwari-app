@@ -8,20 +8,23 @@ use repository::Repository;
 pub struct State {
     service: service::Service,
     repository: Repository,
+    authz: authz::Engine,
     pg_pool: sqlx::PgPool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ServiceContext<'a> {
     repository: &'a Repository,
+    authz: &'a authz::Engine,
     pg_pool: &'a sqlx::PgPool,
 }
 
 #[derive(Debug, Clone)]
 pub struct AuthnState {
-    pub service: service::AuthenticatedService,
-    pub repository: Repository,
-    pub pg_pool: sqlx::PgPool,
+    service: service::AuthenticatedService,
+    repository: Repository,
+    authz: authz::Engine,
+    pg_pool: sqlx::PgPool,
 }
 
 // MARK: impl State
@@ -33,9 +36,11 @@ impl State {
             .await
             .context("Failed to connect to PostgreSQL")?;
         let repository = repository::Repository::up(&pool).await?;
+        let authz = authz::Engine::new();
         Ok(Self {
             service: service::Service::new(),
             repository,
+            authz,
             pg_pool: pool,
         })
     }
@@ -43,6 +48,7 @@ impl State {
     fn service_context(&self) -> ServiceContext<'_> {
         ServiceContext {
             repository: &self.repository,
+            authz: &self.authz,
             pg_pool: &self.pg_pool,
         }
     }
@@ -81,6 +87,7 @@ impl service::MakeAuthenticated<crate::error::Error> for State {
         Ok(AuthnState {
             service: self.service.authenticated(user.id),
             repository: self.repository.clone(),
+            authz: self.authz,
             pg_pool: self.pg_pool.clone(),
         })
     }
@@ -92,6 +99,7 @@ impl AuthnState {
     fn service_context(&self) -> ServiceContext<'_> {
         ServiceContext {
             repository: &self.repository,
+            authz: &self.authz,
             pg_pool: &self.pg_pool,
         }
     }
@@ -155,7 +163,7 @@ impl service::ProvideUserRepository for ServiceContext<'_> {
     }
 
     fn user_repository(&self) -> &Self::UserRepository<'_> {
-        &self.repository
+        self.repository
     }
 }
 
@@ -175,6 +183,42 @@ impl service::ProvideGroupRepository for ServiceContext<'_> {
     }
 
     fn group_repository(&self) -> &Self::GroupRepository<'_> {
-        &self.repository
+        self.repository
+    }
+}
+
+impl service::ProvideUserAccessControl for ServiceContext<'_> {
+    type Context<'a>
+        = ()
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+    type UserAccessControl<'a>
+        = authz::Engine
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {}
+
+    fn user_access_control(&self) -> &Self::UserAccessControl<'_> {
+        self.authz
+    }
+}
+
+impl service::ProvideGroupAccessControl for ServiceContext<'_> {
+    type Context<'a>
+        = ()
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+    type GroupAccessControl<'a>
+        = authz::Engine
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {}
+
+    fn group_access_control(&self) -> &Self::GroupAccessControl<'_> {
+        self.authz
     }
 }
