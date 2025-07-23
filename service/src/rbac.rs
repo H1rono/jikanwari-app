@@ -50,21 +50,21 @@ impl From<Judgement> for bool {
 }
 
 pub trait UserAccessControl<E: domain::Error>: Send + Sync {
-    fn allow_get_user(
+    fn judge_get_user(
         &self,
         by: Principal,
         user_id: domain::UserId,
     ) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_list_users(&self, by: Principal) -> impl Future<Output = Result<Judgement, E>> + Send;
+    fn judge_list_users(&self, by: Principal) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_create_user(
+    fn judge_create_user(
         &self,
         by: Principal,
         params: &domain::CreateUserParams,
     ) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_update_user(
+    fn judge_update_user(
         &self,
         by: Principal,
         user_id: domain::UserId,
@@ -73,29 +73,29 @@ pub trait UserAccessControl<E: domain::Error>: Send + Sync {
 }
 
 pub trait GroupAccessControl<E: domain::Error>: Send + Sync {
-    fn allow_get_group(
+    fn judge_get_group(
         &self,
         by: Principal,
         group_id: domain::GroupId,
     ) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_list_groups(&self, by: Principal)
+    fn judge_list_groups(&self, by: Principal)
     -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_create_group(
+    fn judge_create_group(
         &self,
         by: Principal,
         params: &domain::CreateGroupParams,
     ) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_update_group(
+    fn judge_update_group(
         &self,
         by: Principal,
         group_id: domain::GroupId,
         params: &domain::UpdateGroupParams,
     ) -> impl Future<Output = Result<Judgement, E>> + Send;
 
-    fn allow_update_group_members(
+    fn judge_update_group_members(
         &self,
         by: Principal,
         group_id: domain::GroupId,
