@@ -18,10 +18,10 @@ pub(crate) struct UserEngine {
 impl UserEngine {
     pub(crate) const POLICIES: &str = include_str!("policies/user.cedar");
     pub(crate) const PRINCIPAL_ANONYMOUS: &str = r#"User::"anonymous""#;
-    pub(crate) const ACTION_GET: &str = r#"UserAction::"get""#;
-    pub(crate) const ACTION_LIST: &str = r#"UserAction::"list""#;
-    pub(crate) const ACTION_CREATE: &str = r#"UserAction::"create""#;
-    pub(crate) const ACTION_UPDATE: &str = r#"UserAction::"update""#;
+    pub(crate) const ACTION_GET: &str = r#"Action::"get""#;
+    pub(crate) const ACTION_LIST: &str = r#"Action::"list""#;
+    pub(crate) const ACTION_CREATE: &str = r#"Action::"create""#;
+    pub(crate) const ACTION_UPDATE: &str = r#"Action::"update""#;
 
     pub(crate) fn new() -> anyhow::Result<Self> {
         let policies = Self::POLICIES
