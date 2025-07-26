@@ -86,6 +86,7 @@ dependencies = [
  "cedar-policy",
  "domain",
  "service",
+ "tracing",
 ]
 
 [[package]]
