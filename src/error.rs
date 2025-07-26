@@ -27,6 +27,8 @@ impl From<anyhow::Error> for Error {
     }
 }
 
+impl authz::Error for Error {}
+
 impl repository::Error for Error {
     fn not_found(message: &str) -> Self {
         Error::NotFound(message.to_string())

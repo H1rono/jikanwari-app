@@ -36,7 +36,7 @@ impl State {
             .await
             .context("Failed to connect to PostgreSQL")?;
         let repository = repository::Repository::up(&pool).await?;
-        let authz = authz::Engine::new();
+        let authz = authz::Engine::new()?;
         Ok(Self {
             service: service::Service::new(),
             repository,
@@ -87,7 +87,7 @@ impl service::MakeAuthenticated<crate::error::Error> for State {
         Ok(AuthnState {
             service: self.service.authenticated(user.id),
             repository: self.repository.clone(),
-            authz: self.authz,
+            authz: self.authz.clone(),
             pg_pool: self.pg_pool.clone(),
         })
     }
