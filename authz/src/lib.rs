@@ -63,6 +63,53 @@ impl Engine {
     fn action_type() -> cedar_policy::EntityTypeName {
         Self::ACTION_TYPE.parse().unwrap()
     }
+
+    fn principal_uid(&self, p: service::Principal) -> anyhow::Result<cedar_policy::EntityUid> {
+        use anyhow::Context;
+
+        let uid = match p {
+            service::Principal::Anonymous => self.principal_anonymous(),
+            service::Principal::User(id) => {
+                let p = format!(r#"User::"{id}""#);
+                p.parse().context("Failed to parse user principal")?
+            }
+        };
+        Ok(uid)
+    }
+
+    fn encode_user_id(&self, id: domain::UserId) -> anyhow::Result<cedar_policy::EntityUid> {
+        use anyhow::Context;
+
+        let ty = self.user_type().clone();
+        let id = id
+            .to_string()
+            .parse()
+            .context("Failed to parse UserId as entity ID")?;
+        Ok(cedar_policy::EntityUid::from_type_name_and_id(ty, id))
+    }
+
+    fn make_request(
+        &self,
+        by: service::Principal,
+        action: cedar_policy::EntityUid,
+        resource: cedar_policy::EntityUid,
+        context: cedar_policy::Context,
+    ) -> anyhow::Result<cedar_policy::Request> {
+        use anyhow::Context;
+
+        let p = self.principal_uid(by)?;
+        // TODO: provide schema
+        let request = cedar_policy::Request::new(p, action, resource, context, None)
+            .context("Failed to make cedar request")?;
+        Ok(request)
+    }
+
+    fn convert_decision(&self, d: cedar_policy::Decision) -> service::Judgement {
+        match d {
+            cedar_policy::Decision::Allow => service::Judgement::Allow,
+            cedar_policy::Decision::Deny => service::Judgement::Deny,
+        }
+    }
 }
 
 pub trait Error: domain::Error + From<anyhow::Error> {}

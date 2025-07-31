@@ -1,8 +1,6 @@
 use anyhow::Context;
 use cedar_policy::EntityUid;
 
-use service::Principal;
-
 // MARK: UserEngine
 
 #[derive(Debug, Clone)]
@@ -64,28 +62,15 @@ where
     ) -> Result<service::Judgement, E> {
         let authorizer = self.authorizer();
         let engine = self.user();
-        let principal = match by {
-            Principal::Anonymous => self.principal_anonymous(),
-            Principal::User(id) => {
-                let p = format!(r#"User::"{id}""#);
-                p.parse().context("Failed to parse user principal")?
-            }
-        };
         let action = engine.action_get.clone();
-        let resource = format!(r#"User::"{user_id}""#)
-            .parse()
-            .context("Failed to parse user resource")?;
+        let resource = self.encode_user_id(user_id)?;
         let context = cedar_policy::Context::empty();
-        let request = cedar_policy::Request::new(principal, action, resource, context, None)
-            .context("Failed to create cedar request")?;
+        let request = self.make_request(by, action, resource, context)?;
         let policies = &engine.policies;
         let entities = cedar_policy::Entities::empty();
-        let decision = authorizer.is_authorized(&request, policies, &entities);
-        tracing::debug!(?decision);
-        match decision.decision() {
-            cedar_policy::Decision::Allow => Ok(service::Judgement::Allow),
-            cedar_policy::Decision::Deny => Ok(service::Judgement::Deny),
-        }
+        let response = authorizer.is_authorized(&request, policies, &entities);
+        tracing::debug!(?response);
+        Ok(self.convert_decision(response.decision()))
     }
 
     async fn judge_list_users(
