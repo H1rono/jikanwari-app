@@ -8,7 +8,6 @@ use service::Principal;
 #[derive(Debug, Clone)]
 pub(crate) struct UserEngine {
     policies: cedar_policy::PolicySet,
-    principal_anonymous: EntityUid,
     action_get: EntityUid,
     action_list: EntityUid,
     action_create: EntityUid,
@@ -17,38 +16,34 @@ pub(crate) struct UserEngine {
 
 impl UserEngine {
     pub(crate) const POLICIES: &str = include_str!("policies/user.cedar");
-    pub(crate) const PRINCIPAL_ANONYMOUS: &str = r#"User::"anonymous""#;
-    pub(crate) const ACTION_GET: &str = r#"Action::"get""#;
-    pub(crate) const ACTION_LIST: &str = r#"Action::"list""#;
-    pub(crate) const ACTION_CREATE: &str = r#"Action::"create""#;
-    pub(crate) const ACTION_UPDATE: &str = r#"Action::"update""#;
+    pub(crate) const GET_ID: &str = "get-user";
+    pub(crate) const LIST_ID: &str = "list-users";
+    pub(crate) const CREATE_ID: &str = "create-user";
+    pub(crate) const UPDATE_ID: &str = "update-user";
 
     pub(crate) fn new() -> anyhow::Result<Self> {
         let policies = Self::POLICIES
             .parse()
             .context("Failed to parse user policies")?;
-        let principal_anonymous = Self::PRINCIPAL_ANONYMOUS
+        let action = crate::Engine::action_type();
+        let get = Self::GET_ID
             .parse()
-            .context("Failed to parse user principal 'anonymous'")?;
-        let action_get = Self::ACTION_GET
+            .context("Failed to parse create user action ID")?;
+        let list = Self::LIST_ID
             .parse()
-            .context("Failed to parse user action 'get'")?;
-        let action_list = Self::ACTION_LIST
+            .context("Failed to parse list users action ID")?;
+        let create = Self::CREATE_ID
             .parse()
-            .context("Failed to parse user action 'list'")?;
-        let action_create = Self::ACTION_CREATE
+            .context("Failed to parse create user action ID")?;
+        let update = Self::UPDATE_ID
             .parse()
-            .context("Failed to parse user action 'create'")?;
-        let action_update = Self::ACTION_UPDATE
-            .parse()
-            .context("Failed to parse user action 'update'")?;
+            .context("Failed to parse update user action ID")?;
         Ok(Self {
             policies,
-            principal_anonymous,
-            action_get,
-            action_list,
-            action_create,
-            action_update,
+            action_get: EntityUid::from_type_name_and_id(action.clone(), get),
+            action_list: EntityUid::from_type_name_and_id(action.clone(), list),
+            action_create: EntityUid::from_type_name_and_id(action.clone(), create),
+            action_update: EntityUid::from_type_name_and_id(action, update),
         })
     }
 }
@@ -70,7 +65,7 @@ where
         let authorizer = self.authorizer();
         let engine = self.user();
         let principal = match by {
-            Principal::Anonymous => engine.principal_anonymous.clone(),
+            Principal::Anonymous => self.principal_anonymous(),
             Principal::User(id) => {
                 let p = format!(r#"User::"{id}""#);
                 p.parse().context("Failed to parse user principal")?
