@@ -130,13 +130,57 @@ where
         Ok(self.convert_decision(response.decision()))
     }
 
+    #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
     async fn judge_update_user(
         &self,
-        ctx: C,
+        _ctx: C,
         by: service::Principal,
         user_id: domain::UserId,
         params: &domain::UpdateUserParams,
     ) -> Result<service::Judgement, E> {
-        Err(anyhow::anyhow!("not implemented").into())
+        use std::collections::{HashMap, HashSet};
+
+        let engine = self.user();
+        let action = engine.action_update.clone();
+        let resource = self.encode_user_id(user_id)?;
+        let context = cedar_policy::Context::empty();
+        let request = self.make_request(by, action, resource, context)?;
+        let policies = &engine.policies;
+        let principal_entity = {
+            let uid = self.principal_uid(by)?;
+            let attr_id = match by {
+                service::Principal::Anonymous => "anonymous".to_string(),
+                service::Principal::User(u) => u.to_string(),
+            };
+            let attrs: HashMap<_, _> = [(
+                "id".to_string(),
+                cedar_policy::RestrictedExpression::new_string(attr_id),
+            )]
+            .into_iter()
+            .collect();
+            cedar_policy::Entity::new(uid, attrs, HashSet::new())
+                .context("Failed to make entity of principal")?
+        };
+        let resource_entity = {
+            let uid = self.encode_user_id(user_id)?;
+            let attr_id = user_id.to_string();
+            let attrs: HashMap<_, _> = [(
+                "id".to_string(),
+                cedar_policy::RestrictedExpression::new_string(attr_id),
+            )]
+            .into_iter()
+            .collect();
+            cedar_policy::Entity::new(uid, attrs, HashSet::new())
+                .context("Failed to make entity of user")?
+        };
+        // TODO: provide schema
+        let entities =
+            cedar_policy::Entities::from_entities([principal_entity, resource_entity], None)
+                .context("Failed to make entities of update user request")?;
+        let response = self
+            .authorizer()
+            .is_authorized(&request, policies, &entities);
+        tracing::debug!(?response);
+        Ok(self.convert_decision(response.decision()))
     }
 }
