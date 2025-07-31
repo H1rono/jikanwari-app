@@ -55,10 +55,10 @@ where
     C: Send + Sync,
     E: crate::Error,
 {
-    #[tracing::instrument(skip(self, ctx, by, user_id))]
+    #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
     async fn judge_get_user(
         &self,
-        ctx: C,
+        _ctx: C,
         by: service::Principal,
         user_id: domain::UserId,
     ) -> Result<service::Judgement, E> {
