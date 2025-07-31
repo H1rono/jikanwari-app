@@ -9,7 +9,7 @@ forbid (
 permit (
     principal == User::"anonymous",
     action == Action::"create-user",
-    resource is User
+    resource is CreateUser
 );
 
 @id("permit-list-users")
