@@ -22,26 +22,18 @@ impl UserEngine {
     pub(crate) const LIST_USERS_TYPE: &str = "ListUsers";
 
     pub(crate) fn new() -> anyhow::Result<Self> {
+        use cedar_policy::EntityId;
+
         let policies = Self::POLICIES
             .parse()
             .context("Failed to parse user policies")?;
         let action = crate::Engine::action_type();
-        let get = Self::GET_ID
-            .parse()
-            .context("Failed to parse create user action ID")?;
-        let list = Self::LIST_ID
-            .parse()
-            .context("Failed to parse list users action ID")?;
-        let create = Self::CREATE_ID
-            .parse()
-            .context("Failed to parse create user action ID")?;
-        let update = Self::UPDATE_ID
-            .parse()
-            .context("Failed to parse update user action ID")?;
-        let resource_list_users = EntityUid::from_type_name_and_id(
-            Self::list_users_type()?,
-            cedar_policy::EntityId::new(""),
-        );
+        let get = EntityId::new(Self::GET_ID);
+        let list = EntityId::new(Self::LIST_ID);
+        let create = EntityId::new(Self::CREATE_ID);
+        let update = EntityId::new(Self::UPDATE_ID);
+        let resource_list_users =
+            EntityUid::from_type_name_and_id(Self::list_users_type()?, EntityId::new(""));
         Ok(Self {
             policies,
             action_get: EntityUid::from_type_name_and_id(action.clone(), get),

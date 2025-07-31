@@ -25,9 +25,7 @@ impl Engine {
         let user_type = Self::USER_TYPE
             .parse()
             .context("Failed to parse user type")?;
-        let anonymous_id = Self::ANONYMOUS_ID
-            .parse()
-            .context("Failed to parse anonymous user ID")?;
+        let anonymous_id = cedar_policy::EntityId::new(Self::ANONYMOUS_ID);
         let inner = EngineInner {
             authorizer,
             user,
