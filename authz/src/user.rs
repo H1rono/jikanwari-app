@@ -10,6 +10,7 @@ pub(crate) struct UserEngine {
     action_list: EntityUid,
     action_create: EntityUid,
     action_update: EntityUid,
+    resource_list_users: EntityUid,
 }
 
 impl UserEngine {
@@ -18,6 +19,7 @@ impl UserEngine {
     pub(crate) const LIST_ID: &str = "list-users";
     pub(crate) const CREATE_ID: &str = "create-user";
     pub(crate) const UPDATE_ID: &str = "update-user";
+    pub(crate) const LIST_USERS_TYPE: &str = "ListUsers";
 
     pub(crate) fn new() -> anyhow::Result<Self> {
         let policies = Self::POLICIES
@@ -36,13 +38,24 @@ impl UserEngine {
         let update = Self::UPDATE_ID
             .parse()
             .context("Failed to parse update user action ID")?;
+        let resource_list_users = EntityUid::from_type_name_and_id(
+            Self::list_users_type()?,
+            cedar_policy::EntityId::new(""),
+        );
         Ok(Self {
             policies,
             action_get: EntityUid::from_type_name_and_id(action.clone(), get),
             action_list: EntityUid::from_type_name_and_id(action.clone(), list),
             action_create: EntityUid::from_type_name_and_id(action.clone(), create),
             action_update: EntityUid::from_type_name_and_id(action, update),
+            resource_list_users,
         })
+    }
+
+    fn list_users_type() -> anyhow::Result<cedar_policy::EntityTypeName> {
+        Self::LIST_USERS_TYPE
+            .parse()
+            .context("Failed to parse list user type")
     }
 }
 
@@ -73,12 +86,24 @@ where
         Ok(self.convert_decision(response.decision()))
     }
 
+    #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
     async fn judge_list_users(
         &self,
-        ctx: C,
+        _ctx: C,
         by: service::Principal,
     ) -> Result<service::Judgement, E> {
-        Err(anyhow::anyhow!("not implemented").into())
+        let engine = self.user();
+        let action = engine.action_list.clone();
+        let resource = engine.resource_list_users.clone();
+        let context = cedar_policy::Context::empty();
+        let request = self.make_request(by, action, resource, context)?;
+        let policies = &engine.policies;
+        let entities = cedar_policy::Entities::empty();
+        let response = self
+            .authorizer()
+            .is_authorized(&request, policies, &entities);
+        tracing::debug!(?response);
+        Ok(self.convert_decision(response.decision()))
     }
 
     async fn judge_create_user(

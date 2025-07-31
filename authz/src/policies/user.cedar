@@ -16,7 +16,7 @@ permit (
 permit (
     principal,
     action == Action::"list-users",
-    resource is ListUser
+    resource is ListUsers
 );
 
 @id("permit-get-user")
