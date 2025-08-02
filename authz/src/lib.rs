@@ -102,8 +102,12 @@ impl Engine {
         Ok(request)
     }
 
-    fn convert_decision(&self, d: cedar_policy::Decision) -> service::Judgement {
-        match d {
+    fn read_response(&self, response: cedar_policy::Response) -> service::Judgement {
+        tracing::debug!(?response);
+        for e in response.diagnostics().errors() {
+            tracing::error!(error = %e, "Cedar policy error");
+        }
+        match response.decision() {
             cedar_policy::Decision::Allow => service::Judgement::Allow,
             cedar_policy::Decision::Deny => service::Judgement::Deny,
         }

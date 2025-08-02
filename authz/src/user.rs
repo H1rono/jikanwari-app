@@ -86,7 +86,7 @@ where
         let entities = cedar_policy::Entities::empty();
         let response = authorizer.is_authorized(&request, policies, &entities);
         tracing::debug!(?response);
-        Ok(self.convert_decision(response.decision()))
+        Ok(self.read_response(response))
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -106,7 +106,7 @@ where
             .authorizer()
             .is_authorized(&request, policies, &entities);
         tracing::debug!(?response);
-        Ok(self.convert_decision(response.decision()))
+        Ok(self.read_response(response))
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -127,7 +127,7 @@ where
             .authorizer()
             .is_authorized(&request, policies, &entities);
         tracing::debug!(?response);
-        Ok(self.convert_decision(response.decision()))
+        Ok(self.read_response(response))
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -181,6 +181,6 @@ where
             .authorizer()
             .is_authorized(&request, policies, &entities);
         tracing::debug!(?response);
-        Ok(self.convert_decision(response.decision()))
+        Ok(self.read_response(response))
     }
 }
