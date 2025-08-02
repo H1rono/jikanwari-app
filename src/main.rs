@@ -14,7 +14,9 @@ async fn main() -> anyhow::Result<()> {
     let state = state::State::load_pg(&pg_config).await?;
     let router = router::Service::new(state).into_router();
     let serve_config = config::ServeConfig::load_env("")?;
-    let listener = tokio::net::TcpListener::bind(serve_config.socket_addr())
+    let addr = serve_config.socket_addr();
+    tracing::info!("Starting server at {addr}");
+    let listener = tokio::net::TcpListener::bind(addr)
         .await
         .context("Failed to bind TCP listener")?;
     axum::serve(listener, router)
