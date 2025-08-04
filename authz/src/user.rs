@@ -76,7 +76,6 @@ where
         by: service::Principal,
         user_id: domain::UserId,
     ) -> Result<service::Judgement, E> {
-        let authorizer = self.authorizer();
         let engine = self.user();
         let action = engine.action_get.clone();
         let resource = self.encode_user_id(user_id)?;
@@ -84,8 +83,9 @@ where
         let request = self.make_request(by, action, resource, context)?;
         let policies = &engine.policies;
         let entities = cedar_policy::Entities::empty();
-        let response = authorizer.is_authorized(&request, policies, &entities);
-        tracing::debug!(?response);
+        let response = self
+            .authorizer()
+            .is_authorized(&request, policies, &entities);
         Ok(self.read_response(response))
     }
 
@@ -105,7 +105,6 @@ where
         let response = self
             .authorizer()
             .is_authorized(&request, policies, &entities);
-        tracing::debug!(?response);
         Ok(self.read_response(response))
     }
 
@@ -126,7 +125,6 @@ where
         let response = self
             .authorizer()
             .is_authorized(&request, policies, &entities);
-        tracing::debug!(?response);
         Ok(self.read_response(response))
     }
 
@@ -180,7 +178,6 @@ where
         let response = self
             .authorizer()
             .is_authorized(&request, policies, &entities);
-        tracing::debug!(?response);
         Ok(self.read_response(response))
     }
 }
