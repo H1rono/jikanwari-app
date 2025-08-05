@@ -8,12 +8,15 @@ pub struct Engine(std::sync::Arc<EngineInner>);
 struct EngineInner {
     authorizer: cedar_policy::Authorizer,
     user: user::UserEngine,
+    group: group::GroupEngine,
     user_type: cedar_policy::EntityTypeName,
+    group_type: cedar_policy::EntityTypeName,
     anonymous_id: cedar_policy::EntityId,
 }
 
 impl Engine {
     const USER_TYPE: &str = "User";
+    const GROUP_TYPE: &str = "Group";
     const ANONYMOUS_ID: &str = "anonymous";
     const ACTION_TYPE: &str = "Action";
 
@@ -22,14 +25,20 @@ impl Engine {
 
         let authorizer = cedar_policy::Authorizer::new();
         let user = user::UserEngine::new()?;
+        let group = group::GroupEngine::new()?;
         let user_type = Self::USER_TYPE
             .parse()
             .context("Failed to parse user type")?;
+        let group_type = Self::GROUP_TYPE
+            .parse()
+            .context("Failed to parse group type")?;
         let anonymous_id = cedar_policy::EntityId::new(Self::ANONYMOUS_ID);
         let inner = EngineInner {
             authorizer,
             user,
+            group,
             user_type,
+            group_type,
             anonymous_id,
         };
         Ok(Self(std::sync::Arc::new(inner)))
@@ -43,8 +52,16 @@ impl Engine {
         &self.0.user
     }
 
+    fn group(&self) -> &group::GroupEngine {
+        &self.0.group
+    }
+
     fn user_type(&self) -> &cedar_policy::EntityTypeName {
         &self.0.user_type
+    }
+
+    fn group_type(&self) -> &cedar_policy::EntityTypeName {
+        &self.0.group_type
     }
 
     fn anonymous_id(&self) -> &cedar_policy::EntityId {
@@ -83,6 +100,17 @@ impl Engine {
             .to_string()
             .parse()
             .context("Failed to parse UserId as entity ID")?;
+        Ok(cedar_policy::EntityUid::from_type_name_and_id(ty, id))
+    }
+
+    fn encode_group_id(&self, id: domain::GroupId) -> anyhow::Result<cedar_policy::EntityUid> {
+        use anyhow::Context;
+
+        let ty = self.group_type().clone();
+        let id = id
+            .to_string()
+            .parse()
+            .context("Failed to parse GroupId as entity ID")?;
         Ok(cedar_policy::EntityUid::from_type_name_and_id(ty, id))
     }
 
