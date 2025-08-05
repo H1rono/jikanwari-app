@@ -114,6 +114,59 @@ impl Engine {
         Ok(cedar_policy::EntityUid::from_type_name_and_id(ty, id))
     }
 
+    /// principal -> `User` entity
+    fn encode_principal_entity(
+        &self,
+        p: service::Principal,
+        groups: impl IntoIterator<Item = domain::GroupId>,
+    ) -> anyhow::Result<cedar_policy::Entity> {
+        use std::collections::{HashMap, HashSet};
+
+        use anyhow::Context;
+
+        let uid = self.principal_uid(p)?;
+        let attr_id = match p {
+            service::Principal::Anonymous => "anonymous".to_string(),
+            service::Principal::User(u) => u.to_string(),
+        };
+        let attrs: HashMap<_, _> = [(
+            "id".to_string(),
+            cedar_policy::RestrictedExpression::new_string(attr_id),
+        )]
+        .into_iter()
+        .collect();
+        let groups: HashSet<_> = groups
+            .into_iter()
+            .map(|g| self.encode_group_id(g))
+            .collect::<anyhow::Result<_>>()?;
+        cedar_policy::Entity::new(uid, attrs, groups).context("Failed to make entity of principal")
+    }
+
+    /// user -> `User` entity
+    fn encode_user_entity(
+        &self,
+        user_id: domain::UserId,
+        groups: impl IntoIterator<Item = domain::GroupId>,
+    ) -> anyhow::Result<cedar_policy::Entity> {
+        use std::collections::{HashMap, HashSet};
+
+        use anyhow::Context;
+
+        let uid = self.encode_user_id(user_id)?;
+        let attr_id = user_id.to_string();
+        let attrs: HashMap<_, _> = [(
+            "id".to_string(),
+            cedar_policy::RestrictedExpression::new_string(attr_id),
+        )]
+        .into_iter()
+        .collect();
+        let groups: HashSet<_> = groups
+            .into_iter()
+            .map(|g| self.encode_group_id(g))
+            .collect::<anyhow::Result<_>>()?;
+        cedar_policy::Entity::new(uid, attrs, groups).context("Failed to make entity of user")
+    }
+
     fn make_request(
         &self,
         by: service::Principal,

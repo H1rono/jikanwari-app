@@ -62,6 +62,54 @@ impl UserEngine {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Request {
+    GetUser(domain::UserId),
+    ListUsers,
+    CreateUser,
+    UpdateUser(domain::UserId),
+}
+
+impl crate::Engine {
+    pub(crate) async fn process_user_request<E: crate::Error>(
+        &self,
+        by: service::Principal,
+        request: Request,
+    ) -> Result<service::Judgement, E> {
+        use Request::{CreateUser, GetUser, ListUsers, UpdateUser};
+
+        let engine = self.user();
+        let action = match request {
+            GetUser(_) => engine.action_get.clone(),
+            ListUsers => engine.action_list.clone(),
+            CreateUser => engine.action_create.clone(),
+            UpdateUser(_) => engine.action_update.clone(),
+        };
+        let resource = match request {
+            GetUser(user_id) => self.encode_user_id(user_id)?,
+            ListUsers => engine.resource_list_users.clone(),
+            CreateUser => engine.resource_create_user.clone(),
+            UpdateUser(user_id) => self.encode_user_id(user_id)?,
+        };
+        let context = cedar_policy::Context::empty();
+        let entities = match request {
+            GetUser(_) | ListUsers | CreateUser => cedar_policy::Entities::empty(),
+            UpdateUser(user_id) => {
+                let principal_entity = self.encode_principal_entity(by, std::iter::empty())?;
+                let resource_entity = self.encode_user_entity(user_id, std::iter::empty())?;
+                cedar_policy::Entities::from_entities([principal_entity, resource_entity], None)
+                    .context("Failed to make entities of user request")?
+            }
+        };
+        let request = self.make_request(by, action, resource, context)?;
+        let policies = &engine.policies;
+        let response = self
+            .authorizer()
+            .is_authorized(&request, policies, &entities);
+        Ok(self.read_response(response))
+    }
+}
+
 // MARK: UserAccessControl for Engine
 
 impl<C, E> service::UserAccessControl<C, E> for crate::Engine
@@ -76,17 +124,8 @@ where
         by: service::Principal,
         user_id: domain::UserId,
     ) -> Result<service::Judgement, E> {
-        let engine = self.user();
-        let action = engine.action_get.clone();
-        let resource = self.encode_user_id(user_id)?;
-        let context = cedar_policy::Context::empty();
-        let request = self.make_request(by, action, resource, context)?;
-        let policies = &engine.policies;
-        let entities = cedar_policy::Entities::empty();
-        let response = self
-            .authorizer()
-            .is_authorized(&request, policies, &entities);
-        Ok(self.read_response(response))
+        let r = Request::GetUser(user_id);
+        self.process_user_request::<E>(by, r).await
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -95,17 +134,8 @@ where
         _ctx: C,
         by: service::Principal,
     ) -> Result<service::Judgement, E> {
-        let engine = self.user();
-        let action = engine.action_list.clone();
-        let resource = engine.resource_list_users.clone();
-        let context = cedar_policy::Context::empty();
-        let request = self.make_request(by, action, resource, context)?;
-        let policies = &engine.policies;
-        let entities = cedar_policy::Entities::empty();
-        let response = self
-            .authorizer()
-            .is_authorized(&request, policies, &entities);
-        Ok(self.read_response(response))
+        let r = Request::ListUsers;
+        self.process_user_request::<E>(by, r).await
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -115,17 +145,8 @@ where
         by: service::Principal,
         params: &domain::CreateUserParams,
     ) -> Result<service::Judgement, E> {
-        let engine = self.user();
-        let action = engine.action_create.clone();
-        let resource = engine.resource_create_user.clone();
-        let context = cedar_policy::Context::empty();
-        let request = self.make_request(by, action, resource, context)?;
-        let policies = &engine.policies;
-        let entities = cedar_policy::Entities::empty();
-        let response = self
-            .authorizer()
-            .is_authorized(&request, policies, &entities);
-        Ok(self.read_response(response))
+        let r = Request::CreateUser;
+        self.process_user_request::<E>(by, r).await
     }
 
     #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
@@ -136,48 +157,7 @@ where
         user_id: domain::UserId,
         params: &domain::UpdateUserParams,
     ) -> Result<service::Judgement, E> {
-        use std::collections::{HashMap, HashSet};
-
-        let engine = self.user();
-        let action = engine.action_update.clone();
-        let resource = self.encode_user_id(user_id)?;
-        let context = cedar_policy::Context::empty();
-        let request = self.make_request(by, action, resource, context)?;
-        let policies = &engine.policies;
-        let principal_entity = {
-            let uid = self.principal_uid(by)?;
-            let attr_id = match by {
-                service::Principal::Anonymous => "anonymous".to_string(),
-                service::Principal::User(u) => u.to_string(),
-            };
-            let attrs: HashMap<_, _> = [(
-                "id".to_string(),
-                cedar_policy::RestrictedExpression::new_string(attr_id),
-            )]
-            .into_iter()
-            .collect();
-            cedar_policy::Entity::new(uid, attrs, HashSet::new())
-                .context("Failed to make entity of principal")?
-        };
-        let resource_entity = {
-            let uid = self.encode_user_id(user_id)?;
-            let attr_id = user_id.to_string();
-            let attrs: HashMap<_, _> = [(
-                "id".to_string(),
-                cedar_policy::RestrictedExpression::new_string(attr_id),
-            )]
-            .into_iter()
-            .collect();
-            cedar_policy::Entity::new(uid, attrs, HashSet::new())
-                .context("Failed to make entity of user")?
-        };
-        // TODO: provide schema
-        let entities =
-            cedar_policy::Entities::from_entities([principal_entity, resource_entity], None)
-                .context("Failed to make entities of update user request")?;
-        let response = self
-            .authorizer()
-            .is_authorized(&request, policies, &entities);
-        Ok(self.read_response(response))
+        let r = Request::UpdateUser(user_id);
+        self.process_user_request::<E>(by, r).await
     }
 }
