@@ -1,6 +1,8 @@
 mod group;
 mod user;
 
+pub use group::{GroupEntityRepository, ProvideGroupEntityRepository};
+
 #[derive(Debug, Clone)]
 pub struct Engine(std::sync::Arc<EngineInner>);
 

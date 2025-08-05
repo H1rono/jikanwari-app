@@ -62,9 +62,78 @@ impl GroupEngine {
     }
 }
 
+// MARK: GroupEntityRepository
+
+pub trait GroupEntityRepository<Context, E>: Send + Sync {
+    fn get_group_members(
+        &self,
+        ctx: Context,
+        id: domain::GroupId,
+    ) -> impl Future<Output = Result<Vec<domain::UserId>, E>> + Send;
+}
+
+impl<R, C, E> GroupEntityRepository<C, E> for &R
+where
+    R: GroupEntityRepository<C, E>,
+    C: Send,
+{
+    async fn get_group_members(
+        &self,
+        ctx: C,
+        id: domain::GroupId,
+    ) -> Result<Vec<domain::UserId>, E> {
+        R::get_group_members(self, ctx, id).await
+    }
+}
+
+pub trait ProvideGroupEntityRepository: Send + Sync {
+    type Context<'a>
+    where
+        Self: 'a;
+    type GroupEntityRepository<'a>: GroupEntityRepository<Self::Context<'a>, Self::Error>
+    where
+        Self: 'a;
+    type Error;
+
+    fn context(&self) -> Self::Context<'_>;
+    fn group_entity_repository(&self) -> &Self::GroupEntityRepository<'_>;
+
+    fn get_group_members(
+        &self,
+        id: domain::GroupId,
+    ) -> impl Future<Output = Result<Vec<domain::UserId>, Self::Error>> + Send {
+        let ctx = self.context();
+        self.group_entity_repository().get_group_members(ctx, id)
+    }
+}
+
+impl<R> ProvideGroupEntityRepository for &R
+where
+    R: ProvideGroupEntityRepository,
+{
+    type Context<'a>
+        = R::Context<'a>
+    where
+        Self: 'a;
+    type Error = R::Error;
+    type GroupEntityRepository<'a>
+        = R::GroupEntityRepository<'a>
+    where
+        Self: 'a;
+
+    fn context(&self) -> Self::Context<'_> {
+        R::context(self)
+    }
+    fn group_entity_repository(&self) -> &Self::GroupEntityRepository<'_> {
+        R::group_entity_repository(self)
+    }
+}
+
+// MARK: GroupAccessControl for Engine
+
 impl<C, E> service::GroupAccessControl<C, E> for crate::Engine
 where
-    C: Send + Sync,
+    C: ProvideGroupEntityRepository,
     E: crate::Error,
 {
     async fn judge_get_group(
