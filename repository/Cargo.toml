@@ -12,5 +12,6 @@ sqlx.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
+authz.path = "../authz"
 domain.path = "../domain"
 service.path = "../service"

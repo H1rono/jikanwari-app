@@ -1747,6 +1747,7 @@ name = "repository"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "authz",
  "chrono",
  "domain",
  "serde",

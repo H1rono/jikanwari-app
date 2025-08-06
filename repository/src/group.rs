@@ -67,6 +67,8 @@ pub struct GroupMemberRow {
     pub user_id: uuid::Uuid,
 }
 
+// MARK: impl GroupRepository
+
 impl<C, E> service::GroupRepository<C, E> for crate::Repository
 where
     C: crate::AsPgPool,
@@ -232,5 +234,37 @@ where
             Ok(group.into())
         })
         .await
+    }
+}
+
+// MARK: impl GroupEntityRepository
+
+impl<C, E> authz::GroupEntityRepository<C, E> for crate::Repository
+where
+    C: crate::AsPgPool,
+    E: crate::Error,
+{
+    async fn get_group_members(
+        &self,
+        ctx: C,
+        id: domain::GroupId,
+    ) -> Result<Vec<domain::UserId>, E> {
+        #[derive(Deserialize, Serialize, sqlx::FromRow)]
+        struct Row {
+            user_id: uuid::Uuid,
+        }
+
+        let members = sqlx::query_file_as!(Row, "queries/get_group_members.sql", id.into_inner())
+            .fetch_all(ctx.as_pg_pool())
+            .await
+            .inspect_err(
+                |e| tracing::error!(error = %e, "Postgres error while fetching group members"),
+            )
+            .context("Failed to fetch group members")?;
+        let members: Vec<_> = members
+            .into_iter()
+            .map(|r| domain::UserId::new(r.user_id))
+            .collect();
+        Ok(members)
     }
 }
