@@ -169,6 +169,44 @@ impl Engine {
         cedar_policy::Entity::new(uid, attrs, groups).context("Failed to make entity of user")
     }
 
+    fn encode_group_members(
+        &self,
+        members: &[domain::UserId],
+    ) -> anyhow::Result<cedar_policy::RestrictedExpression> {
+        use anyhow::Context;
+        use cedar_policy::RestrictedExpression;
+
+        let members = members
+            .iter()
+            .map(|m| {
+                let id = RestrictedExpression::new_string(m.to_string());
+                RestrictedExpression::new_record([("id".to_string(), id)])
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to make cedar expression of group members")?;
+        Ok(RestrictedExpression::new_set(members))
+    }
+
+    /// group -> `Group` entity
+    fn encode_group_entity(
+        &self,
+        id: domain::GroupId,
+        members: &[domain::UserId],
+    ) -> anyhow::Result<cedar_policy::Entity> {
+        use std::collections::{HashMap, HashSet};
+
+        use anyhow::Context;
+
+        let uid = self.encode_group_id(id)?;
+        let id = cedar_policy::RestrictedExpression::new_string(id.to_string());
+        let members = self.encode_group_members(members)?;
+        let attrs: HashMap<_, _> = [("id".to_string(), id), ("members".to_string(), members)]
+            .into_iter()
+            .collect();
+        cedar_policy::Entity::new(uid, attrs, HashSet::new())
+            .context("Failed to make entity of group")
+    }
+
     fn make_request(
         &self,
         by: service::Principal,
