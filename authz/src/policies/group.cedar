@@ -34,7 +34,7 @@ permit (
     // principal: { id }
     // resource: { members: { id }[] }
     resource.members.contains(principal.id)
-}
+};
 
 // メンバーに自身が含まれているグループのみ編集(現状, 改名のみ)できる
 @id("permit-update-group")
@@ -50,7 +50,7 @@ permit (
 @id("permit-update-group-members")
 permit (
     principal in ?principal,
-    action = Action::"update-group-members",
+    action == Action::"update-group-members",
     resource is Group
 ) when {
     resource.members.contains(principal.id)
