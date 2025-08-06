@@ -173,17 +173,12 @@ impl Engine {
         &self,
         members: &[domain::UserId],
     ) -> anyhow::Result<cedar_policy::RestrictedExpression> {
-        use anyhow::Context;
         use cedar_policy::RestrictedExpression;
 
-        let members = members
+        let members: Vec<_> = members
             .iter()
-            .map(|m| {
-                let id = RestrictedExpression::new_string(m.to_string());
-                RestrictedExpression::new_record([("id".to_string(), id)])
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to make cedar expression of group members")?;
+            .map(|m| RestrictedExpression::new_string(m.to_string()))
+            .collect();
         Ok(RestrictedExpression::new_set(members))
     }
 

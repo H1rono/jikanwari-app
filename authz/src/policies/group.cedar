@@ -32,7 +32,7 @@ permit (
     resource is CreateGroup,
 ) when {
     // principal: { id }
-    // resource: { members: { id }[] }
+    // resource: { members: id[] }
     resource.members.contains(principal.id)
 };
 
@@ -46,7 +46,7 @@ permit (
 
 // メンバーに自身が含まれているグループのみ他のメンバーを編集できる
 // ?principal: 編集前のグループ
-// resource: 編集後のグループ { members: { id }[] }
+// resource: 編集後のグループ { members: id[] }
 @id("permit-update-group-members")
 permit (
     principal in ?principal,
