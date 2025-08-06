@@ -235,4 +235,6 @@ impl Engine {
     }
 }
 
+// MARK: trait Error
+
 pub trait Error: domain::Error + From<anyhow::Error> {}

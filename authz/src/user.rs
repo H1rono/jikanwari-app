@@ -79,24 +79,24 @@ impl crate::Engine {
         use Request::{CreateUser, GetUser, ListUsers, UpdateUser};
 
         let engine = self.user();
-        let action = match request {
+        let action = match &request {
             GetUser(_) => engine.action_get.clone(),
             ListUsers => engine.action_list.clone(),
             CreateUser => engine.action_create.clone(),
             UpdateUser(_) => engine.action_update.clone(),
         };
-        let resource = match request {
-            GetUser(user_id) => self.encode_user_id(user_id)?,
+        let resource = match &request {
+            GetUser(user_id) => self.encode_user_id(*user_id)?,
             ListUsers => engine.resource_list_users.clone(),
             CreateUser => engine.resource_create_user.clone(),
-            UpdateUser(user_id) => self.encode_user_id(user_id)?,
+            UpdateUser(user_id) => self.encode_user_id(*user_id)?,
         };
         let context = cedar_policy::Context::empty();
-        let entities = match request {
+        let entities = match &request {
             GetUser(_) | ListUsers | CreateUser => cedar_policy::Entities::empty(),
             UpdateUser(user_id) => {
                 let principal_entity = self.encode_principal_entity(by, std::iter::empty())?;
-                let resource_entity = self.encode_user_entity(user_id, std::iter::empty())?;
+                let resource_entity = self.encode_user_entity(*user_id, std::iter::empty())?;
                 cedar_policy::Entities::from_entities([principal_entity, resource_entity], None)
                     .context("Failed to make entities of user request")?
             }
@@ -138,24 +138,24 @@ where
         self.process_user_request::<E>(by, r).await
     }
 
-    #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
+    #[tracing::instrument(skip(self, _ctx, _params), ret(level = "debug"))]
     async fn judge_create_user(
         &self,
         _ctx: C,
         by: service::Principal,
-        params: &domain::CreateUserParams,
+        _params: &domain::CreateUserParams,
     ) -> Result<service::Judgement, E> {
         let r = Request::CreateUser;
         self.process_user_request::<E>(by, r).await
     }
 
-    #[tracing::instrument(skip(self, _ctx), ret(level = "debug"))]
+    #[tracing::instrument(skip(self, _ctx, _params), ret(level = "debug"))]
     async fn judge_update_user(
         &self,
         _ctx: C,
         by: service::Principal,
         user_id: domain::UserId,
-        params: &domain::UpdateUserParams,
+        _params: &domain::UpdateUserParams,
     ) -> Result<service::Judgement, E> {
         let r = Request::UpdateUser(user_id);
         self.process_user_request::<E>(by, r).await
