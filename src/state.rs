@@ -27,6 +27,11 @@ pub struct AuthnState {
     pg_pool: sqlx::PgPool,
 }
 
+pub struct EngineContext<'a> {
+    repository: &'a Repository,
+    pg_pool: &'a sqlx::PgPool,
+}
+
 // MARK: impl State
 
 impl State {
@@ -207,7 +212,7 @@ impl service::ProvideUserAccessControl for ServiceContext<'_> {
 
 impl service::ProvideGroupAccessControl for ServiceContext<'_> {
     type Context<'a>
-        = ()
+        = EngineContext<'a>
     where
         Self: 'a;
     type Error = crate::error::Error;
@@ -216,9 +221,41 @@ impl service::ProvideGroupAccessControl for ServiceContext<'_> {
     where
         Self: 'a;
 
-    fn context(&self) -> Self::Context<'_> {}
+    fn context(&self) -> Self::Context<'_> {
+        EngineContext::new(self.repository, self.pg_pool)
+    }
 
     fn group_access_control(&self) -> &Self::GroupAccessControl<'_> {
         self.authz
+    }
+}
+
+// MARK: impl EngineContext
+
+impl<'a> EngineContext<'a> {
+    fn new(repository: &'a Repository, pg_pool: &'a sqlx::PgPool) -> Self {
+        Self {
+            repository,
+            pg_pool,
+        }
+    }
+}
+
+impl authz::ProvideGroupEntityRepository for EngineContext<'_> {
+    type Context<'a>
+        = &'a sqlx::PgPool
+    where
+        Self: 'a;
+    type GroupEntityRepository<'a>
+        = Repository
+    where
+        Self: 'a;
+    type Error = crate::error::Error;
+
+    fn context(&self) -> Self::Context<'_> {
+        self.pg_pool
+    }
+    fn group_entity_repository(&self) -> &Self::GroupEntityRepository<'_> {
+        self.repository
     }
 }
