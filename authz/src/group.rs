@@ -238,16 +238,46 @@ impl crate::Engine {
                 (action, resource, entities, policies)
             }
             UpdateGroupMembers { id, members } => {
+                let old_members = repo.get_group_members(id).await?;
                 let action = engine.action_update_members.clone();
                 let resource = self.encode_group_id(id)?;
                 let entities = {
-                    let principal = self.encode_principal_entity(by, std::iter::empty())?;
+                    let principal = match by {
+                        service::Principal::User(user_id) if old_members.contains(&user_id) => {
+                            self.encode_principal_entity(by, [id])?
+                        }
+                        service::Principal::User(_) | service::Principal::Anonymous => {
+                            self.encode_principal_entity(by, std::iter::empty())?
+                        }
+                    };
                     let update_group = self.encode_group_entity(id, members)?;
                     cedar_policy::Entities::from_entities([principal, update_group], None)
                         .context("Failed to make cedar entities")?
                 };
-                // TODO: let policies = { ... };
-                (action, resource, entities, engine.policies.clone())
+                let policies = {
+                    let mut p = engine.policies.clone();
+                    let template = p
+                        .templates()
+                        .find(|t| {
+                            t.annotation("id")
+                                .is_some_and(|i| i == "permit-update-group-members")
+                        })
+                        .context(
+                            r#"Policy template @id("permit-update-group-members") not found"#,
+                        )?;
+                    let template_id = template.id().clone();
+                    let policy_id =
+                        cedar_policy::PolicyId::new(format!("permit-update-group-{id}"));
+                    let env: std::collections::HashMap<_, _> =
+                        [(cedar_policy::SlotId::principal(), self.encode_group_id(id)?)]
+                            .into_iter()
+                            .collect();
+                    p.link(template_id, policy_id, env).context(
+                        r#"Failed to link the policy template @id("permit-update-group-members")"#,
+                    )?;
+                    p
+                };
+                (action, resource, entities, policies)
             }
         };
         let context = cedar_policy::Context::empty();
